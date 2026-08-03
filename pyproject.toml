@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codeharness"
+version = "0.1.0"
+description = "A local CLI Coding Agent Harness with feedback-loop engineering"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=1.0",
+    "keyring>=24.0",
+    "rich>=13.0",
+    "tomli>=2.0",
+    "typer>=0.15",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+codeharness = "codeharness.main:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
