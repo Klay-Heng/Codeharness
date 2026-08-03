@@ -283,10 +283,21 @@ class FeedbackConfig:
 
 
 # Dangerous command patterns matched by the guard engine (SPEC 3.4 / 10.2).
+# The first entries are the canonical SPEC forms; the following variants
+# close flag-order/bypass gaps: `rm -fr`, `rm -r -f`, `rm --recursive
+# --force`, `chmod -R 777`, `chmod 0777` (review finding: pattern-variant
+# bypass).  Entries must stay literal substrings of the canonical forms
+# where tests/SPEC reference them, so variants are appended, not merged.
 DEFAULT_DANGEROUS_PATTERNS: list[str] = [
     r"rm\s+-rf",  # recursive force delete
+    r"rm\s+-(?:[A-Za-z]*[rf][A-Za-z]*[rf][A-Za-z]*)",  # -rf / -fr / -rF (any order)
+    r"rm\s+-[A-Za-z]*r[A-Za-z]*\s+-[A-Za-z]*f[A-Za-z]*",  # rm -r -f
+    r"rm\s+-[A-Za-z]*f[A-Za-z]*\s+-[A-Za-z]*r[A-Za-z]*",  # rm -f -r
+    r"rm\s+--recursive\b[\s\S]*?\b--force\b",  # rm --recursive --force
+    r"rm\s+--force\b[\s\S]*?\b--recursive\b",  # rm --force --recursive
     r"sudo",  # privilege escalation
     r"chmod\s+777",  # world-writable permissions
+    r"chmod\s+(?:-[A-Za-z]*\s+)?0?777\b",  # variants: -R 777, 0777
     r">\s*/dev/",  # writing to device files
     r"git\s+push\s+--force",  # force-push
     r"git\s+reset\s+--hard",  # destructive reset

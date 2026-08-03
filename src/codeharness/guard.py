@@ -11,6 +11,10 @@ ASK_ALWAYS) and is decided by code, not prompt:
    line is synthesized from ``operation`` + ``args`` for matching.
 3. Path boundary: ``write_file`` (``path``) and ``run_shell`` (``cwd``)
    must resolve inside ``GuardConfig.project_root``, else ASK_ALWAYS.
+   ``run_shell`` must state its ``cwd`` explicitly: a missing cwd cannot
+   be verified against the boundary (the tool would fall back to the
+   process cwd), so it is treated as outside — deny by default
+   (review finding: missing-cwd bypass).
 4. Otherwise the tool's ``risk_level`` maps LOW -> ALLOW,
    MEDIUM -> ASK_ONCE, HIGH -> ASK_ALWAYS.  ``git_op`` risk VARIES per
    operation (SPEC tool table): read-only ops are LOW, destructive ops
@@ -144,7 +148,10 @@ class GuardEngine:
         else:
             return False
         if raw is None:
-            return False
+            # run_shell with no cwd: the boundary cannot be verified (the
+            # tool would default to the process cwd), so deny by default.
+            # An LLM must not be able to omit cwd to skip the check.
+            return action.tool == "run_shell"
         try:
             target = Path(str(raw))
             if target.is_absolute():

@@ -8,6 +8,8 @@ ASK_ONCE approval memory (including the session_approval toggle).
 """
 from __future__ import annotations
 
+import pytest
+
 from codeharness.guard import GuardEngine, SessionState
 from codeharness.models import Action, GuardConfig, GuardVerdict, ToolsConfig
 from codeharness.tools.file_ops import ReadFileTool, WriteFileTool
@@ -131,6 +133,44 @@ def test_unknown_tool_blocked(tmp_path):
     """An unregistered tool is never allowed -> ASK_ALWAYS."""
     guard, _ = _make_guard(tmp_path)
     action = Action(tool="not_a_tool", params={})
+
+    assert guard.check(action) == GuardVerdict.ASK_ALWAYS
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm -fr /",
+        "rm -r -f /",
+        "rm -f -r /",
+        "rm --recursive --force /",
+        "rm --force --recursive /",
+    ],
+)
+def test_rm_flag_variants_blocked(tmp_path, command):
+    """rm with reordered, split, or long flags still matches a pattern."""
+    guard, _ = _make_guard(tmp_path)
+    action = Action(tool="run_shell", params={"command": command})
+
+    assert guard.check(action) == GuardVerdict.ASK_ALWAYS
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["chmod -R 777 /etc", "chmod 0777 /etc/passwd", "chmod -R 0777 /tmp/x"],
+)
+def test_chmod_flag_variants_blocked(tmp_path, command):
+    """chmod with a -R flag or leading-zero octal is still blocked."""
+    guard, _ = _make_guard(tmp_path)
+    action = Action(tool="run_shell", params={"command": command})
+
+    assert guard.check(action) == GuardVerdict.ASK_ALWAYS
+
+
+def test_run_shell_without_cwd_blocked(tmp_path):
+    """run_shell omitting cwd cannot be boundary-verified -> ASK_ALWAYS."""
+    guard, _ = _make_guard(tmp_path)
+    action = Action(tool="run_shell", params={"command": "ls"})
 
     assert guard.check(action) == GuardVerdict.ASK_ALWAYS
 
