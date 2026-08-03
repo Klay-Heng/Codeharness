@@ -204,14 +204,20 @@ class FeedbackContext:
                 Strategy: Analyze the diff between expected and actual...
         """
         lines = [f"[FEEDBACK] Round {self.round_id} | {len(self.failures)} failure(s)"]
-        for i, failure in enumerate(self.failures):
+        for failure in self.failures:
             location = f"{failure.file}:{failure.line}" if failure.file else ""
             header = f"  [{failure.category.name}] {location}".rstrip()
             lines.append(header)
             if failure.message:
                 lines.append(f"    {failure.message}")
-            if i < len(self.strategies) and self.strategies[i].guidance:
-                lines.append(f"    Strategy: {self.strategies[i].guidance}")
+            # Pair each failure with its strategy by category, not by position,
+            # so filtering/reordering of strategies never misattaches guidance.
+            strategy = next(
+                (s for s in self.strategies if s.category == failure.category),
+                None,
+            )
+            if strategy is not None and strategy.guidance:
+                lines.append(f"    Strategy: {strategy.guidance}")
         return "\n".join(lines)
 
 
@@ -227,7 +233,7 @@ class RunResult:
     status: Literal["success", "failure", "max_rounds", "interrupted"]
     rounds: int
     duration_ms: int = 0
-    final_context: list = field(default_factory=list)
+    final_context: TurnContext | None = None
 
 
 @dataclass

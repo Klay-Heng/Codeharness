@@ -305,6 +305,47 @@ class TestFeedbackContext:
         assert "assert 3 == 5" in text
         assert "Strategy: Analyze the diff between expected and actual, fix logic" in text
 
+    def test_serialize_pairs_strategy_by_category_not_position(self):
+        # Strategies are ordered differently from failures; guidance must
+        # still attach to the right failure via category lookup.
+        syntax_failure = ClassifiedFailure(
+            category=FailureCategory.SYNTAX_ERROR,
+            file="test.py",
+            line=3,
+            message="invalid syntax",
+        )
+        timeout_failure = ClassifiedFailure(
+            category=FailureCategory.TIMEOUT,
+            file="slow.py",
+            message="took too long",
+        )
+        syntax_strategy = FeedbackStrategy(
+            category=FailureCategory.SYNTAX_ERROR,
+            guidance="Fix syntax only, do not change logic",
+        )
+        timeout_strategy = FeedbackStrategy(
+            category=FailureCategory.TIMEOUT,
+            guidance="Check for infinite loops or add caching",
+        )
+        # Strategies in reverse order relative to failures.
+        ctx = FeedbackContext(
+            round_id=3,
+            failures=[syntax_failure, timeout_failure],
+            strategies=[timeout_strategy, syntax_strategy],
+        )
+        text = ctx.serialize()
+        syntax_block = text.split("test.py:3", 1)[1]
+        assert "Fix syntax only, do not change logic" in syntax_block
+        timeout_block = text.split("slow.py", 1)[1]
+        assert "Check for infinite loops or add caching" in timeout_block
+
+    def test_serialize_without_strategy_omits_guidance(self):
+        failure = ClassifiedFailure(category=FailureCategory.UNKNOWN, message="weird")
+        ctx = FeedbackContext(round_id=4, failures=[failure], strategies=[])
+        text = ctx.serialize()
+        assert "[UNKNOWN]" in text
+        assert "Strategy:" not in text
+
 
 # ---------------------------------------------------------------------------
 # CorrectionRecord / LoopDecision / RunResult
@@ -355,19 +396,20 @@ class TestRunResult:
         assert result.status == "success"
         assert result.rounds == 1
         assert result.duration_ms == 0
-        assert result.final_context == []
+        assert result.final_context is None
 
     def test_full(self):
+        context = TurnContext()
         result = RunResult(
             status="failure",
             rounds=3,
             duration_ms=1500,
-            final_context=["some state"],
+            final_context=context,
         )
         assert result.status == "failure"
         assert result.rounds == 3
         assert result.duration_ms == 1500
-        assert result.final_context == ["some state"]
+        assert result.final_context is context
 
     @pytest.mark.parametrize("status", ["success", "failure", "max_rounds", "interrupted"])
     def test_all_statuses(self, status):
