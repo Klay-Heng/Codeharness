@@ -36,6 +36,7 @@ from codeharness.models import (
     CorrectionRecord,
     FailureCategory,
     RunResult,
+    TurnContext,
 )
 
 # ---------------------------------------------------------------------------
@@ -222,6 +223,9 @@ class REPL:
             )
             for detail in self._blocked_details(result):
                 self.console.print(Text(f"  - {detail}", style="dim yellow"))
+        # Show what the agent actually did (tool results).
+        if result.final_context is not None:
+            self._render_results(result.final_context)
         style = self._status_style(result.status)
         summary = Text()
         summary.append("[", style=style)
@@ -272,6 +276,30 @@ class REPL:
             for r in result.final_context.last_results
             if not r.success and r.error and _BLOCKED_MARKER in r.error
         )
+
+    def _render_results(self, ctx: TurnContext) -> None:
+        """Show executed tool actions with file/command details."""
+        if not ctx.last_results:
+            return
+        shown = 0
+        for r in ctx.last_results:
+            if r.success and r.output:
+                shown += 1
+                output_preview = r.output[:120] + (
+                    "..." if len(r.output) > 120 else ""
+                )
+                self.console.print(
+                    Text(f"  ok ({output_preview})", style="green")
+                )
+            elif not r.success and r.error and "blocked by guard" not in r.error:
+                shown += 1
+                self.console.print(
+                    Text(f"  FAILED: {r.error}", style="red")
+                )
+        if not shown:
+            self.console.print(
+                Text("  (no tools executed)", style="dim")
+            )
 
     def _blocked_details(self, result: RunResult) -> list[str]:
         """Return descriptions of each guard-blocked action."""

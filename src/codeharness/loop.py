@@ -28,7 +28,8 @@ filesystem on its own.
 from __future__ import annotations
 
 import time
-from typing import Awaitable, Callable, Literal
+from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from codeharness.feedback import FeedbackEngine
 from codeharness.guard import GuardEngine
@@ -270,8 +271,12 @@ class AgentLoop:
             verdict = self.guard.check(action)
             if await self._is_approved(verdict, action):
                 result = self.tools.dispatch(action)
-                if action.tool == "write_file" and action.params.get("path"):
-                    files_touched.add(str(action.params["path"]))
+                if action.tool == "write_file" and (
+                    action.params.get("path") or action.params.get("file")
+                ):
+                    files_touched.add(
+                        str(action.params.get("path") or action.params.get("file"))
+                    )
             else:
                 result = ToolResult(
                     action_id=action.action_id,

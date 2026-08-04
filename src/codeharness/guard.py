@@ -142,7 +142,7 @@ class GuardEngine:
         unresolvable path is treated as escaping (deny by default).
         """
         if action.tool == "write_file":
-            raw = action.params.get("path")
+            raw = action.params.get("path") or action.params.get("file")
         elif action.tool == "run_shell":
             raw = action.params.get("cwd")
         else:

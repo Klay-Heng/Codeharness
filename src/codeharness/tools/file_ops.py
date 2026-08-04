@@ -24,7 +24,7 @@ class ReadFileTool:
     risk_level = RiskLevel.LOW
 
     def execute(self, params: dict) -> ToolResult:
-        path = params.get("path")
+        path = params.get("path") or params.get("file")
         if not path:
             return ToolResult(
                 action_id="", success=False, error="missing required param: path"
@@ -101,7 +101,7 @@ class WriteFileTool:
         return target
 
     def execute(self, params: dict) -> ToolResult:
-        path = params.get("path")
+        path = params.get("path") or params.get("file")
         if not path:
             return ToolResult(
                 action_id="", success=False, error="missing required param: path"
