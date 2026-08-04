@@ -4,15 +4,20 @@ Tests cover FailureClassifier, StrategySelector, LoopController,
 and FeedbackEngine (integration). All deterministic — no LLM needed.
 """
 
-import pytest
-from codeharness.models import (
-    ToolResult, ClassifiedFailure, FeedbackStrategy, FeedbackContext,
-    CorrectionRecord, LoopDecision, FeedbackConfig, FailureCategory,
-)
 from codeharness.feedback import (
-    FailureClassifier, StrategySelector, LoopController, FeedbackEngine,
+    FailureClassifier,
+    FeedbackEngine,
+    LoopController,
+    StrategySelector,
 )
-
+from codeharness.models import (
+    ClassifiedFailure,
+    CorrectionRecord,
+    FailureCategory,
+    FeedbackConfig,
+    FeedbackStrategy,
+    ToolResult,
+)
 
 # =============================================================================
 # FailureClassifier

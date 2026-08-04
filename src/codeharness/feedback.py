@@ -13,17 +13,17 @@ no randomness.  Every mechanism is verifiable with mock ToolResult data.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import ClassVar
 
 from codeharness.models import (
-    ToolResult,
     ClassifiedFailure,
-    FeedbackStrategy,
-    FeedbackContext,
     CorrectionRecord,
-    LoopDecision,
-    FeedbackConfig,
     FailureCategory,
+    FeedbackConfig,
+    FeedbackContext,
+    FeedbackStrategy,
+    LoopDecision,
+    ToolResult,
 )
 
 # ---------------------------------------------------------------------------
@@ -32,16 +32,16 @@ from codeharness.models import (
 
 # Regex patterns per failure category. Each pattern extracts file/line/message
 # where available from tool output text.
+# fmt: off
 _PATTERNS: list[tuple[FailureCategory, str]] = [
-    # fmt: off
     (FailureCategory.SYNTAX_ERROR,  r'SyntaxError:\s*(.+)'),
     (FailureCategory.IMPORT_ERROR,  r'(?:ModuleNotFoundError|ImportError):\s*(.+)'),
     (FailureCategory.ASSERTION_FAILURE, r'AssertionError:\s*(.+)'),
     (FailureCategory.RUNTIME_ERROR, r'(?<!Assertion)(?<!Syntax)Error\b[^:]*:\s*(.+)'),
     (FailureCategory.TYPE_ERROR,    r'(?:Incompatible types|type error).*'),
     (FailureCategory.LINT_WARNING,  r'^(.+?):(\d+):(\d+):\s*(\w+\d+)\s+(.+)'),
-    # fmt: on
 ]
+# fmt: on
 
 # File + line extraction (pytest / traceback style)
 _FILE_LINE_PAT = re.compile(r'File\s+"(.+?)",\s*line\s+(\d+)', re.MULTILINE)
@@ -63,7 +63,7 @@ class FailureClassifier:
     """
 
     # Compiled per-category regexes, built once at import time.
-    _COMPILED: list[tuple[FailureCategory, re.Pattern[str]]] = [
+    _COMPILED: ClassVar[list[tuple[FailureCategory, re.Pattern[str]]]] = [
         (cat, re.compile(pat, re.MULTILINE | re.IGNORECASE))
         for cat, pat in _PATTERNS
     ]
