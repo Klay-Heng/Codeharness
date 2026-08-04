@@ -215,6 +215,10 @@ class AgentLoop:
         """Build the system prompt from the memory context + config."""
         parts = [
             "You are CodeHarness, an autonomous coding agent.",
+            "IMPORTANT: When asked to create or modify a file, you MUST use "
+            "write_file to write the file — reading alone does not complete "
+            "the task. After writing, verify your work by reading the file "
+            "back or running the tests.",
             f"Project: {self.config.project.name or 'untitled'}",
             (
                 "Language: "
