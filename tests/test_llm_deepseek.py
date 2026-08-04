@@ -16,7 +16,6 @@ import codeharness.llm.deepseek as deepseek_module
 from codeharness.llm.deepseek import DeepSeekBackend
 from codeharness.models import LLMConfig, Message
 
-
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
@@ -66,16 +65,16 @@ class _FakeResponse:
 
 
 class _RecordingCompletions:
-    def __init__(self, client: "_RecordingClient") -> None:
+    def __init__(self, client: _RecordingClient) -> None:
         self._client = client
 
-    async def create(self, **kwargs):  # noqa: ANN003 - fake API surface
+    async def create(self, **kwargs):
         self._client.create_kwargs = kwargs
         return self._client.response
 
 
 class _RecordingChat:
-    def __init__(self, client: "_RecordingClient") -> None:
+    def __init__(self, client: _RecordingClient) -> None:
         self.completions = _RecordingCompletions(client)
 
 
