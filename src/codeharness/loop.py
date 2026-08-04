@@ -28,7 +28,7 @@ filesystem on its own.
 from __future__ import annotations
 
 import time
-from typing import Literal
+from typing import Awaitable, Callable, Literal
 
 from codeharness.feedback import FeedbackEngine
 from codeharness.guard import GuardEngine
@@ -46,6 +46,9 @@ from codeharness.models import (
 )
 from codeharness.parser import ResponseParser
 from codeharness.tools.registry import ToolRegistry
+
+# Approval callback: (action, verdict) -> bool (True = approved, False = denied)
+ApprovalCallback = Callable[[Action, GuardVerdict], Awaitable[bool]]
 
 _RunStatus = Literal["success", "failure", "max_rounds", "interrupted"]
 
@@ -72,8 +75,16 @@ class AgentLoop:
         memory: MemoryStore,
         config: Config,
         parser: ResponseParser,
+        approval_callback: ApprovalCallback | None = None,
     ) -> None:
-        """Create an agent loop with all dependencies injected."""
+        """Create an agent loop with all dependencies injected.
+
+        ``approval_callback`` is an async function ``(action, verdict) ->
+        bool`` called when the guard blocks an action (ASK_ONCE not yet
+        approved, or ASK_ALWAYS).  If the callback returns True the
+        action executes; if it returns False (or is None) the action is
+        skipped.  In tests the callback is None (MockBackend).
+        """
         self.llm = llm
         self.tools = tools
         self.guard = guard
@@ -81,6 +92,7 @@ class AgentLoop:
         self.memory = memory
         self.config = config
         self.parser = parser
+        self.approval_callback = approval_callback
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -121,7 +133,7 @@ class AgentLoop:
             )
             messages.append(assistant_msg)
 
-            results, action_ids, files_touched = self._execute_round(
+            results, action_ids, files_touched = await self._execute_round(
                 actions, messages
             )
             last_results = results
@@ -216,21 +228,27 @@ class AgentLoop:
             parts.append(memory_context)
         return "\n".join(parts)
 
-    def _is_approved(self, verdict: GuardVerdict, action: Action) -> bool:
+    async def _is_approved(
+        self, verdict: GuardVerdict, action: Action
+    ) -> bool:
         """True if the loop may execute ``action`` under ``verdict``.
 
-        ALLOW always executes.  ASK_ONCE executes only when the user
-        already approved the tool for this session.  ASK_ALWAYS is
-        rejected outright — an interactive caller (the REPL) would
-        prompt, but the loop itself never asks.
+        ALLOW always executes.  ASK_ONCE skips the callback when the
+        tool was already approved this session.  ASK_ALWAYS and
+        ASK_ONCE (first time) call ``self.approval_callback`` when
+        one is wired; without a callback they are always denied.
         """
         if verdict is GuardVerdict.ALLOW:
             return True
-        if verdict is GuardVerdict.ASK_ONCE:
-            return self.guard.session.is_approved(action.tool)
+        if verdict is GuardVerdict.ASK_ONCE and self.guard.session.is_approved(
+            action.tool
+        ):
+            return True
+        if self.approval_callback is not None:
+            return await self.approval_callback(action, verdict)
         return False
 
-    def _execute_round(
+    async def _execute_round(
         self,
         actions: list[Action],
         messages: list[Message],
@@ -250,7 +268,7 @@ class AgentLoop:
         for action in actions:
             action_ids.append(action.action_id)
             verdict = self.guard.check(action)
-            if self._is_approved(verdict, action):
+            if await self._is_approved(verdict, action):
                 result = self.tools.dispatch(action)
                 if action.tool == "write_file" and action.params.get("path"):
                     files_touched.add(str(action.params["path"]))

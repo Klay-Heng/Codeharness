@@ -96,6 +96,8 @@ class REPL:
         self.console = console if console is not None else Console()
         self._last_task: str | None = None
         self._last_result: RunResult | None = None
+        # Wire the approval callback so the REPL prompts on guard blocks.
+        agent_loop.approval_callback = self._approval_callback
 
     # ------------------------------------------------------------------
     # Main loop
@@ -173,6 +175,19 @@ class REPL:
             message, choices=list(_APPROVAL_CHOICES), default="n"
         )
         return choice.strip().lower()
+
+    async def _approval_callback(self, action, verdict) -> bool:
+        """Async callback wired to AgentLoop for HITL guard approvals."""
+        choice = self.request_approval(
+            action.tool,
+            detail=f"{verdict.value} — {action.params}",
+        )
+        if choice == "y":
+            return True
+        if choice == "session":
+            self.agent_loop.guard.session.approve(action.tool)
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Rendering
