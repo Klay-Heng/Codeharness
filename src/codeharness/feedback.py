@@ -126,11 +126,15 @@ class FailureClassifier:
                     message=match.group(1).strip() if match.lastindex else text[:200],
                     raw_output=text,
                 )
-                # Extract file:line from traceback
-                fl_match = _FILE_LINE_PAT.search(text)
-                if fl_match:
-                    f.file = fl_match.group(1)
-                    f.line = int(fl_match.group(2))
+                # Extract file:line from the DEEPEST traceback frame (the
+                # last `File "...", line N` in the text).  The first frame
+                # is usually the outermost caller (framework internals or
+                # "<string>"), not where the error actually occurred.
+                frames = list(_FILE_LINE_PAT.finditer(text))
+                if frames:
+                    deepest = frames[-1]
+                    f.file = deepest.group(1)
+                    f.line = int(deepest.group(2))
                 failures.append(f)
 
         # 5. Pytest assertion failures (structured output)
