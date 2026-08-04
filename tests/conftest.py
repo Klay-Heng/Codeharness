@@ -1,6 +1,5 @@
 """Shared pytest fixtures for CodeHarness tests."""
 import pytest
-from pathlib import Path
 
 
 @pytest.fixture

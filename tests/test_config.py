@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from codeharness.config import ConfigLoader
 from codeharness.models import DEFAULT_DANGEROUS_PATTERNS, Config
 
