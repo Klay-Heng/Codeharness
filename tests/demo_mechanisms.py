@@ -60,7 +60,6 @@ from codeharness.tools.file_ops import ReadFileTool, WriteFileTool
 from codeharness.tools.registry import ToolRegistry
 from codeharness.tools.shell import RunShellTool
 
-
 # ---------------------------------------------------------------------------
 # Demo 1: guard engine intercepts dangerous actions
 # ---------------------------------------------------------------------------
