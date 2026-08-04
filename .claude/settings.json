@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import inspect, rich.panel; sig = inspect.signature\\(rich.panel.Panel.__init__\\); print\\([p for p in sig.parameters]\\)\")",
+      "Bash(python -m pytest tests/test_llm_deepseek.py -q)",
+      "Bash(python -m pytest tests/test_main.py -q)",
+      "Bash(codeharness --help)",
+      "Bash(codeharness setup *)",
+      "Bash(codeharness status *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(codeharness)",
+      "Bash(python -m ruff check --fix src/ tests/)",
+      "Bash(python -m pytest tests/test_main.py tests/test_llm_deepseek.py -q)",
+      "Bash(python -m pytest tests/test_llm_deepseek.py tests/test_main.py -q)",
+      "Bash(python -c \"import codeharness; print\\('codeharness import OK:', codeharness.__file__\\)\")"
+    ]
+  }
+}

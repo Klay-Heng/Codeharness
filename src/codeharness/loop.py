@@ -112,10 +112,37 @@ class AgentLoop:
             )
             actions = self.parser.parse(response)
 
+            # Echo the assistant response (with tool_calls) into the
+            # conversation so DeepSeek/OpenAI-compatible APIs see the
+            # required assistant -> tool message sequence.
+            assistant_msg = Message(
+                role="assistant",
+                content=response.content or "",
+            )
+            messages.append(assistant_msg)
+
             results, action_ids, files_touched = self._execute_round(
                 actions, messages
             )
             last_results = results
+
+            # If every action was blocked, tell the LLM so it can try
+            # a different approach instead of silently succeeding.
+            blocked = [r for r in results if not r.success and r.error and "blocked by guard" in (r.error or "")]
+            if blocked and len(blocked) == len(results):
+                blocked_detail = "\n".join(
+                    f"  - {r.error}" for r in blocked
+                )
+                messages.append(Message(
+                    role="user",
+                    content=(
+                        "All of your actions were blocked by the guard:\n"
+                        f"{blocked_detail}\n"
+                        "Please use different tools or parameters. "
+                        "For shell commands, always include a 'cwd' "
+                        "inside the project directory."
+                    ),
+                ))
 
             # Evaluate the round: classify failures, pick strategies,
             # and let the loop controller decide what happens next.
@@ -231,7 +258,10 @@ class AgentLoop:
                 result = ToolResult(
                     action_id=action.action_id,
                     success=False,
-                    error=f"blocked by guard: {verdict.value}",
+                    error=(
+                        f"blocked by guard: {verdict.value}"
+                        f" (tool: {action.tool})"
+                    ),
                 )
             results.append(result)
             messages.append(

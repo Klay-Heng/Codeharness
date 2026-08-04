@@ -201,10 +201,12 @@ class REPL:
         if blocked:
             self.console.print(
                 Text(
-                    f"Guard blocked {blocked} action(s) during this run.",
+                    f"Guard blocked {blocked} action(s) during this run:",
                     style="yellow",
                 )
             )
+            for detail in self._blocked_details(result):
+                self.console.print(Text(f"  - {detail}", style="dim yellow"))
         style = self._status_style(result.status)
         summary = Text()
         summary.append("[", style=style)
@@ -255,6 +257,16 @@ class REPL:
             for r in result.final_context.last_results
             if not r.success and r.error and _BLOCKED_MARKER in r.error
         )
+
+    def _blocked_details(self, result: RunResult) -> list[str]:
+        """Return descriptions of each guard-blocked action."""
+        if result.final_context is None:
+            return []
+        return [
+            r.error or "unknown"
+            for r in result.final_context.last_results
+            if not r.success and r.error and _BLOCKED_MARKER in r.error
+        ]
 
     # ------------------------------------------------------------------
     # Exit
