@@ -37,7 +37,7 @@ _PATTERNS: list[tuple[FailureCategory, str]] = [
     (FailureCategory.SYNTAX_ERROR,  r'SyntaxError:\s*(.+)'),
     (FailureCategory.IMPORT_ERROR,  r'(?:ModuleNotFoundError|ImportError):\s*(.+)'),
     (FailureCategory.ASSERTION_FAILURE, r'AssertionError:\s*(.+)'),
-    (FailureCategory.RUNTIME_ERROR, r'(?<!Assertion)(?<!Syntax)Error\b[^:]*:\s*(.+)'),
+    (FailureCategory.RUNTIME_ERROR, r'(?:TypeError|ValueError|AttributeError|KeyError|IndexError|OSError|RuntimeError|ZeroDivisionError|NameError|FileNotFoundError|PermissionError|RecursionError|UnboundLocalError|NotImplementedError|IndentationError|TabError|SystemError|MemoryError|BufferError|ReferenceError|BlockingIOError|ChildProcessError|ConnectionError|BrokenPipeError|TimeoutError|IsADirectoryError|NotADirectoryError|InterruptedError|ProcessLookupError|StopIteration|EOFError|FloatingPointError|OverflowError|UnicodeError|UnicodeDecodeError|UnicodeEncodeError|IOError|EnvironmentError):\s*(.+)'),
     (FailureCategory.TYPE_ERROR,    r'(?:Incompatible types|type error).*'),
     (FailureCategory.LINT_WARNING,  r'^(.+?):(\d+):(\d+):\s*(\w+\d+)\s+(.+)'),
 ]
@@ -164,6 +164,17 @@ class FailureClassifier:
                 message=text[:200] or f"Exit code {result.exit_code}",
                 raw_output=text,
             ))
+
+        # 7. Unknown fallback: unparseable error output with exit_code=0
+        # Only trigger if the text looks like an error (not "4 passed in 0.5s")
+        if not failures and text.strip():
+            error_indicators = r"(?i)(error|fail|traceback|exception|warning|trace|abort|signal)"
+            if re.search(error_indicators, text):
+                failures.append(ClassifiedFailure(
+                    category=FailureCategory.UNKNOWN,
+                    message=text[:200],
+                    raw_output=text,
+                ))
 
         return failures
 
@@ -382,7 +393,9 @@ class FeedbackEngine:
         """
         all_failures: list[ClassifiedFailure] = []
         for result in results:
-            all_failures.extend(self.classifier.classify(result))
+            all_failures.extend(
+                self.classifier.classify(result, timeout_ms=self.config.timeout_ms)
+            )
 
         strategies = [self.selector.select(f) for f in all_failures]
         decision = self.controller.decide(

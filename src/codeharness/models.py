@@ -277,6 +277,7 @@ class FeedbackConfig:
 
     max_correction_rounds: int = 5
     max_same_error: int = 3
+    timeout_ms: int = 60000
     signal_sources: list[str] = field(default_factory=lambda: ["pytest", "ruff", "mypy"])
     test_command: str = "pytest tests/ -v --junitxml=report.xml"
     lint_command: str = "ruff check src/"
