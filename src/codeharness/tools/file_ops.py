@@ -18,8 +18,10 @@ class ReadFileTool:
 
     name = "read_file"
     description = (
-        "Read a text file; optional start_line/end_line select a "
-        "1-based inclusive line range."
+        "Read a text file. Parameters: path (string, required) — "
+        "the file path to read; start_line (int, optional) — first "
+        "line to read (1-based); end_line (int, optional) — last "
+        "line to read (1-based, inclusive)."
     )
     risk_level = RiskLevel.LOW
 
@@ -77,7 +79,11 @@ class WriteFileTool:
     """
 
     name = "write_file"
-    description = "Create or overwrite a file inside the project root."
+    description = (
+        "Create or overwrite a file. Parameters: path (string, "
+        "required) — the file path to write to; content (string, "
+        "required) — the full text content to write into the file."
+    )
     risk_level = RiskLevel.MEDIUM
 
     def __init__(self, root: str | Path = ".") -> None:

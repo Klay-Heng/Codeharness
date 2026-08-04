@@ -17,8 +17,10 @@ class RunShellTool:
 
     name = "run_shell"
     description = (
-        "Execute a shell command; params: command, optional cwd, "
-        "optional timeout in seconds (default 60)."
+        "Execute a shell command. Parameters: command (string, "
+        "required) — the command to run; cwd (string, required) — "
+        "working directory, must be inside the project; timeout "
+        "(int, optional) — timeout in seconds (default 60)."
     )
     risk_level = RiskLevel.MEDIUM
 
