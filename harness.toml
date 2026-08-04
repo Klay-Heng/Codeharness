@@ -1,0 +1,51 @@
+# Example project-level configuration for CodeHarness.
+#
+# This file is a documentation example.  Copy it into a project you want
+# the harness to work on and adjust the values.  Config is merged from
+# three sources, lowest priority first:
+#
+#   1. built-in defaults (src/codeharness/models.py)
+#   2. user-level     ~/.coding-harness/config.toml
+#   3. project-level  ./harness.toml   (this file wins on conflicts)
+#
+# Keys may be written in kebab-case (e.g. `max-correction-rounds`) or
+# snake_case (`max_correction_rounds`); both are normalized to the same
+# field.  Unknown sections/keys are ignored, so newer keys never crash
+# older versions.
+
+[project]
+name = "example-project"
+language = "python"
+test_framework = "pytest"
+lint_tool = "ruff"
+type_checker = "mypy"
+
+[llm]
+provider = "deepseek"
+model = "deepseek-chat"
+api_base = "https://api.deepseek.com"
+max_tokens = 8192
+temperature = 0.0
+
+[feedback]
+max_correction_rounds = 5      # hard stop after this many correction rounds
+max_same_error = 3             # escalate to a human after N same-category errors
+timeout_ms = 60000             # tool executions longer than this classify as TIMEOUT
+signal_sources = ["pytest", "ruff", "mypy"]
+test_command = "pytest tests/ -v --junitxml=report.xml"
+lint_command = "ruff check src/"
+
+[guard]
+session_approval = true        # ASK_ONCE tools stay approved for the session
+project_root = "."             # path boundary for write_file / run_shell
+allowed_dirs = ["src", "tests", "docs"]
+# Extra patterns are APPENDED to the built-in dangerous list; a project
+# can never wipe out the user-level extras or the built-ins.
+extra_dangerous_patterns = ["docker rm -f"]
+
+[tools]
+disabled = []                  # tool names to disable, e.g. ["run_shell"]
+shell_timeout = 60             # default timeout in seconds for run_shell
+
+[memory]
+max_decisions_loaded = 10      # most recent decisions in the system prompt
