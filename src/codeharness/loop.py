@@ -110,15 +110,7 @@ class AgentLoop:
         decision and otherwise injects the feedback and continues.
         """
         start = time.perf_counter()
-        self._read_only_streak = 0
         self._silent_streak = 0
-        # Determine if this is a modify task (requires writes) vs a question.
-        _modify_keywords = (
-            "修改", "创建", "写", "加", "改", "新建", "生成", "添加",
-            "modify", "create", "write", "add", "change", "update",
-            "make", "build", "generate", "implement", "fix", "refactor",
-        )
-        is_modify_task = any(kw in task.lower() for kw in _modify_keywords)
         messages: list[Message] = [
             Message(role="system", content=self._system_prompt()),
             Message(role="user", content=task),
@@ -157,34 +149,6 @@ class AgentLoop:
                 actions, messages
             )
             last_results = results
-
-            # For modify tasks: if the LLM only read, push back.
-            # After 2 consecutive read-only rounds, escalate.
-            # For pure questions, reading is perfectly valid — skip.
-            if is_modify_task:
-                write_tools = {"write_file", "run_shell", "run_tests", "git_op", "package_op"}
-                executed_tools = {
-                    a.tool for a, r in zip(actions, results)
-                    if r.success and "blocked" not in (r.error or "")
-                }
-                if executed_tools and executed_tools.isdisjoint(write_tools):
-                    self._read_only_streak += 1
-                    if self._read_only_streak >= 2:
-                        status = "interrupted"
-                        break
-                    messages.append(Message(
-                        role="user",
-                        content=(
-                            "You have only performed read operations so far. "
-                            "If the task requires modifying or creating files, "
-                            "you MUST use write_file to actually write the "
-                            "changes. Reading alone does not complete a "
-                            "modify/create task."
-                        ),
-                    ))
-                    round_number += 1
-                    continue
-                self._read_only_streak = 0
 
             # If the LLM declared done (no more tool calls) but gave no
             # text response, ask it to summarize before stopping.
