@@ -170,7 +170,9 @@ class AgentLoop:
                         "If the task requires modifying or creating files, "
                         "you MUST use write_file to actually write the "
                         "changes. Reading alone does not complete a "
-                        "modify/create task. Please continue."
+                        "modify/create task. "
+                        "If the task was a question, please state the answer "
+                        "now in natural language."
                     ),
                 ))
                 round_number += 1
@@ -257,11 +259,17 @@ class AgentLoop:
             f"Environment: {platform.system()} ({platform.release()}). "
             "Use Windows commands (dir, type, findstr) not Unix (ls, cat, grep) "
             "when running shell commands.",
-            "IMPORTANT: Every run_shell call MUST include 'cwd' parameter. "
-            "When asked to create or modify a file, you MUST use "
-            "write_file to write the file — reading alone does not complete "
-            "the task. After writing, verify your work by reading the file "
-            "back or running the tests.",
+            "",
+            "CRITICAL RULES:",
+            "1. When asked a question, after reading files or running commands, "
+            "you MUST always respond with a clear natural-language answer "
+            "summarizing what you found. Do NOT end the conversation with "
+            "only a tool call — always add a text response explaining the result.",
+            "2. Every run_shell call MUST include a 'cwd' parameter.",
+            "3. When asked to create or modify a file, you MUST use write_file "
+            "to write the file — reading alone does not complete the task. "
+            "After writing, verify your work by reading the file back "
+            "or running the tests.",
             f"Project: {self.config.project.name or 'untitled'}",
             (
                 "Language: "
