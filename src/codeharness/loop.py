@@ -27,6 +27,7 @@ filesystem on its own.
 """
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Awaitable, Callable
 from typing import Literal
@@ -125,14 +126,23 @@ class AgentLoop:
             )
             actions = self.parser.parse(response)
 
-            # Echo the assistant response (with tool_calls) into the
+            # Echo the assistant response WITH tool_calls into the
             # conversation so DeepSeek/OpenAI-compatible APIs see the
-            # required assistant -> tool message sequence.
-            assistant_msg = Message(
+            # required assistant(tool_calls) -> tool message sequence.
+            assistant_content = response.content or ""
+            assistant_tool_calls = [
+                {
+                    "id": f"call_{i}",
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": json.dumps(tc["params"])},
+                }
+                for i, tc in enumerate(response.tool_calls)
+            ]
+            messages.append(Message(
                 role="assistant",
-                content=response.content or "",
-            )
-            messages.append(assistant_msg)
+                content=assistant_content,
+                tool_calls=assistant_tool_calls if assistant_tool_calls else None,
+            ))
 
             results, action_ids, files_touched = await self._execute_round(
                 actions, messages

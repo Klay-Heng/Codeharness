@@ -91,11 +91,15 @@ class DeepSeekBackend:
         """Serialize one harness Message into an OpenAI API message dict.
 
         Tool results must carry the id of the assistant tool call they
-        answer (``tool_call_id``); it is included only when present.
+        answer (``tool_call_id``); assistant messages that called tools
+        must carry ``tool_calls`` so the API accepts subsequent tool
+        results.
         """
         formatted: dict[str, Any] = {"role": message.role, "content": message.content}
         if message.tool_call_id:
             formatted["tool_call_id"] = message.tool_call_id
+        if message.tool_calls:
+            formatted["tool_calls"] = message.tool_calls
         return formatted
 
     @staticmethod
