@@ -125,6 +125,15 @@ class AgentLoop:
             )
             actions = self.parser.parse(response)
 
+            # DEBUG: log the raw LLM response for troubleshooting
+            import sys
+            print(
+                f"\n[DEBUG Round {round_number}] "
+                f"content={response.content[:200]!r}, "
+                f"tool_calls={[(tc['name'], list(tc['params'].keys())) for tc in response.tool_calls]!r}",
+                file=sys.stderr, flush=True,
+            )
+
             # Echo the assistant response (with tool_calls) into the
             # conversation so DeepSeek/OpenAI-compatible APIs see the
             # required assistant -> tool message sequence.
