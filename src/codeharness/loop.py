@@ -127,6 +127,24 @@ class AgentLoop:
             )
             actions = self.parser.parse(response)
 
+            # If the LLM says "stop" but only used read-only tools, it
+            # probably didn't complete a modify task. Ask it to reconsider.
+            if response.finish_reason == "stop" and actions and all(
+                a.tool in ("read_file", "search_code", "glob_files")
+                for a in actions
+            ):
+                messages.append(Message(
+                    role="user",
+                    content=(
+                        f"The task was: {task}\n"
+                        "You declared done but only read files. "
+                        "If changes are needed, call write_file. "
+                        "If no changes are needed, explain why."
+                    ),
+                ))
+                round_number += 1
+                continue
+
             # Echo the assistant response WITH tool_calls into the
             # conversation so DeepSeek/OpenAI-compatible APIs see the
             # required assistant(tool_calls) -> tool message sequence.
