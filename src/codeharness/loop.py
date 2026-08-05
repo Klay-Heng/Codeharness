@@ -10,7 +10,7 @@
    b. parse the response into ``Action`` objects
    c. screen each action with the guard engine: approved actions
       (ALLOW, or ASK_ONCE already session-approved) execute; anything
-      else is skipped and reported back to the loop as blocked
+      else is skipped
    d. collect the ToolResults and evaluate them through the
       FeedbackEngine (classify + strategy + loop decision)
    e. act on the LoopDecision:
@@ -56,17 +56,7 @@ _RunStatus = Literal["success", "failure", "max_rounds", "interrupted"]
 
 
 class AgentLoop:
-    """The core task-execution loop of the CodeHarness agent.
-
-    Args:
-        llm:      Async LLM backend (MockBackend in tests).
-        tools:    Tool registry used for dispatch.
-        guard:    Guard engine that screens every action pre-dispatch.
-        feedback: Feedback engine (classifier + strategy + controller).
-        memory:   Cross-session memory store for the system prompt.
-        config:   Effective merged configuration.
-        parser:   Converts LLMResponse tool calls into Actions.
-    """
+    """The core task-execution loop of the CodeHarness agent."""
 
     def __init__(
         self,
@@ -79,14 +69,6 @@ class AgentLoop:
         parser: ResponseParser,
         approval_callback: ApprovalCallback | None = None,
     ) -> None:
-        """Create an agent loop with all dependencies injected.
-
-        ``approval_callback`` is an async function ``(action, verdict) ->
-        bool`` called when the guard blocks an action (ASK_ONCE not yet
-        approved, or ASK_ALWAYS).  If the callback returns True the
-        action executes; if it returns False (or is None) the action is
-        skipped.  In tests the callback is None (MockBackend).
-        """
         self.llm = llm
         self.tools = tools
         self.guard = guard
@@ -101,16 +83,7 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     async def run(self, task: str) -> RunResult:
-        """Execute ``task`` to completion and return the run outcome.
-
-        The run performs up to ``config.feedback.max_correction_rounds``
-        rounds (1-indexed).  Each round calls the LLM, screens and
-        executes its actions, and evaluates the results through the
-        feedback engine; the loop stops on the first stop/escalate
-        decision and otherwise injects the feedback and continues.
-        """
         start = time.perf_counter()
-        self._silent_streak = 0
         messages: list[Message] = [
             Message(role="system", content=self._system_prompt()),
             Message(role="user", content=task),
@@ -127,33 +100,16 @@ class AgentLoop:
             )
             actions = self.parser.parse(response)
 
-            # If the LLM says "stop" but only used read-only tools, it
-            # probably didn't complete a modify task. Ask it to reconsider.
-            if response.finish_reason == "stop" and actions and all(
-                a.tool in ("read_file", "search_code", "glob_files")
-                for a in actions
-            ):
-                messages.append(Message(
-                    role="user",
-                    content=(
-                        f"The task was: {task}\n"
-                        "You declared done but only read files. "
-                        "If changes are needed, call write_file. "
-                        "If no changes are needed, explain why."
-                    ),
-                ))
-                round_number += 1
-                continue
-
-            # Echo the assistant response WITH tool_calls into the
-            # conversation so DeepSeek/OpenAI-compatible APIs see the
-            # required assistant(tool_calls) -> tool message sequence.
+            # Build the assistant message with tool_calls for API compliance.
             assistant_content = response.content or ""
             assistant_tool_calls = [
                 {
                     "id": action.action_id,
                     "type": "function",
-                    "function": {"name": tc["name"], "arguments": json.dumps(tc["params"])},
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": json.dumps(tc["params"]),
+                    },
                 }
                 for tc, action in zip(response.tool_calls, actions)
             ]
@@ -168,48 +124,26 @@ class AgentLoop:
             )
             last_results = results
 
-            # If the LLM declared done (no more tool calls) but gave no
-            # text response, ask it to summarize before stopping.
-            # Only trigger when there are tool results in context (i.e. the
-            # LLM has already done some work and should be summarizing).
-            if assistant_content.strip() == "" and not actions and last_results:
-                silent_streak = getattr(self, "_silent_streak", 0) + 1
-                self._silent_streak = silent_streak
-                if silent_streak >= 2:
-                    status = "interrupted"
-                    break
-                messages.append(Message(
-                    role="user",
-                    content=(
-                        "You just used tools but did not provide a text "
-                        "response. Please summarize in natural language: "
-                        "what did you find? Answer the user's question."
-                    ),
-                ))
-                round_number += 1
-                continue
-            self._silent_streak = 0
-
             # If every action was blocked, tell the LLM so it can try
-            # a different approach instead of silently succeeding.
-            blocked = [r for r in results if not r.success and r.error and "blocked by guard" in (r.error or "")]
+            # a different approach.
+            blocked = [
+                r for r in results
+                if not r.success and r.error
+                and "blocked by guard" in (r.error or "")
+            ]
             if blocked and len(blocked) == len(results):
-                blocked_detail = "\n".join(
-                    f"  - {r.error}" for r in blocked
-                )
+                blocked_detail = "\n".join(f"  - {r.error}" for r in blocked)
                 messages.append(Message(
                     role="user",
                     content=(
                         "All of your actions were blocked by the guard:\n"
                         f"{blocked_detail}\n"
                         "Please use different tools or parameters. "
-                        "For shell commands, always include a 'cwd' "
-                        "inside the project directory."
+                        "For shell commands, include a 'cwd' parameter."
                     ),
                 ))
 
-            # Evaluate the round: classify failures, pick strategies,
-            # and let the loop controller decide what happens next.
+            # Evaluate the round through the feedback engine.
             ctx = self.feedback.evaluate(results, round_number, history)
             history.append(
                 CorrectionRecord(
@@ -228,20 +162,13 @@ class AgentLoop:
                 status = "success"
                 break
             if ctx.decision.action == "stop_failure":
-                # The controller only stops with failure once rounds are
-                # exhausted; keep "failure" as a defensive fallback.
-                status = (
-                    "max_rounds"
-                    if round_number >= max_rounds
-                    else "failure"
-                )
+                status = "max_rounds" if round_number >= max_rounds else "failure"
                 break
             if ctx.decision.action == "escalate":
                 status = "interrupted"
                 break
 
-            # retry: hand the serialized feedback back to the LLM and
-            # take another correction round.
+            # retry: hand the serialized feedback back to the LLM.
             messages.append(Message(role="user", content=ctx.serialize()))
             round_number += 1
 
@@ -268,19 +195,13 @@ class AgentLoop:
         parts = [
             "You are CodeHarness, an autonomous coding agent.",
             f"Environment: {platform.system()} ({platform.release()}). "
-            "Use Windows commands (dir, type, findstr) not Unix (ls, cat, grep) "
-            "when running shell commands.",
+            "Use Windows commands (dir, type, findstr) not Unix (ls, cat, grep).",
             "",
-            "CRITICAL RULES:",
-            "1. When asked a question, after reading files or running commands, "
-            "you MUST always respond with a clear natural-language answer "
-            "summarizing what you found. Do NOT end the conversation with "
-            "only a tool call — always add a text response explaining the result.",
-            "2. Every run_shell call MUST include a 'cwd' parameter.",
-            "3. When asked to create or modify a file, you MUST use write_file "
-            "to write the file — reading alone does not complete the task. "
-            "After writing, verify your work by reading the file back "
-            "or running the tests.",
+            "IMPORTANT:",
+            "- When asked to create/modify a file, call write_file to write it.",
+            "- When asked a question, read relevant files and then give a "
+            "natural-language answer summarizing your findings.",
+            "- Every run_shell call MUST include a 'cwd' parameter.",
             f"Project: {self.config.project.name or 'untitled'}",
             (
                 "Language: "
@@ -298,13 +219,6 @@ class AgentLoop:
     async def _is_approved(
         self, verdict: GuardVerdict, action: Action
     ) -> bool:
-        """True if the loop may execute ``action`` under ``verdict``.
-
-        ALLOW always executes.  ASK_ONCE skips the callback when the
-        tool was already approved this session.  ASK_ALWAYS and
-        ASK_ONCE (first time) call ``self.approval_callback`` when
-        one is wired; without a callback they are always denied.
-        """
         if verdict is GuardVerdict.ALLOW:
             return True
         if verdict is GuardVerdict.ASK_ONCE and self.guard.session.is_approved(
@@ -320,14 +234,6 @@ class AgentLoop:
         actions: list[Action],
         messages: list[Message],
     ) -> tuple[list[ToolResult], list[str], set[str]]:
-        """Screen and execute one round's actions.
-
-        Returns ``(results, action_ids, files_touched)``.  Blocked
-        actions produce a failed ToolResult with a ``blocked by
-        guard`` error so the feedback engine and conversation still
-        see what happened; ``files_touched`` only counts writes that
-        were actually executed (used for regression detection).
-        """
         results: list[ToolResult] = []
         action_ids: list[str] = []
         files_touched: set[str] = set()
