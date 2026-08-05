@@ -181,9 +181,11 @@ class AgentLoop:
                 continue
             self._read_only_streak = 0
 
-            # If the LLM used tools but gave no text response, ask it
-            # to summarize what it found before declaring done.
-            if assistant_content.strip() == "" and actions:
+            # If the LLM declared done (no more tool calls) but gave no
+            # text response, ask it to summarize before stopping.
+            # Only trigger when there are tool results in context (i.e. the
+            # LLM has already done some work and should be summarizing).
+            if assistant_content.strip() == "" and not actions and last_results:
                 silent_streak = getattr(self, "_silent_streak", 0) + 1
                 self._silent_streak = silent_streak
                 if silent_streak >= 2:
