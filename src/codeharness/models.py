@@ -295,8 +295,8 @@ DEFAULT_DANGEROUS_PATTERNS: list[str] = [
     r"rm\s+-(?:[A-Za-z]*[rf][A-Za-z]*[rf][A-Za-z]*)",  # -rf / -fr / -rF (any order)
     r"rm\s+-[A-Za-z]*r[A-Za-z]*\s+-[A-Za-z]*f[A-Za-z]*",  # rm -r -f
     r"rm\s+-[A-Za-z]*f[A-Za-z]*\s+-[A-Za-z]*r[A-Za-z]*",  # rm -f -r
-    r"rm\s+--recursive\b[\s\S]*?\b--force\b",  # rm --recursive --force
-    r"rm\s+--force\b[\s\S]*?\b--recursive\b",  # rm --force --recursive
+    r"rm\s+--recursive(?=[\s\S]*?--force(?:$|\s))",  # rm --recursive ... --force
+    r"rm\s+--force(?=[\s\S]*?--recursive(?:$|\s))",  # rm --force ... --recursive
     r"sudo",  # privilege escalation
     r"chmod\s+777",  # world-writable permissions
     r"chmod\s+(?:-[A-Za-z]*\s+)?0?777\b",  # variants: -R 777, 0777

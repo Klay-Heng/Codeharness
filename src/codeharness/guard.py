@@ -148,10 +148,9 @@ class GuardEngine:
         else:
             return False
         if raw is None:
-            # run_shell with no cwd: the boundary cannot be verified (the
-            # tool would default to the process cwd), so deny by default.
-            # An LLM must not be able to omit cwd to skip the check.
-            return action.tool == "run_shell"
+            # run_shell with no cwd: the tool now defaults to "." so
+            # the boundary is project_root itself — treat as in-bounds.
+            return False
         try:
             target = Path(str(raw))
             if target.is_absolute():

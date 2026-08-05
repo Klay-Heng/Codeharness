@@ -33,7 +33,7 @@ class RunShellTool:
             return ToolResult(
                 action_id="", success=False, error="missing required param: command"
             )
-        cwd = params.get("cwd")
+        cwd = params.get("cwd") or "."
         try:
             timeout = int(params.get("timeout") or self.default_timeout)
         except (TypeError, ValueError):

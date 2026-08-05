@@ -251,9 +251,14 @@ class AgentLoop:
 
     def _system_prompt(self) -> str:
         """Build the system prompt from the memory context + config."""
+        import platform
         parts = [
             "You are CodeHarness, an autonomous coding agent.",
-            "IMPORTANT: When asked to create or modify a file, you MUST use "
+            f"Environment: {platform.system()} ({platform.release()}). "
+            "Use Windows commands (dir, type, findstr) not Unix (ls, cat, grep) "
+            "when running shell commands.",
+            "IMPORTANT: Every run_shell call MUST include 'cwd' parameter. "
+            "When asked to create or modify a file, you MUST use "
             "write_file to write the file — reading alone does not complete "
             "the task. After writing, verify your work by reading the file "
             "back or running the tests.",

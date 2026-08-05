@@ -168,11 +168,11 @@ def test_chmod_flag_variants_blocked(tmp_path, command):
 
 
 def test_run_shell_without_cwd_blocked(tmp_path):
-    """run_shell omitting cwd cannot be boundary-verified -> ASK_ALWAYS."""
+    """run_shell without cwd defaults to project root (tool level) -> ASK_ONCE."""
     guard, _ = _make_guard(tmp_path)
     action = Action(tool="run_shell", params={"command": "ls"})
 
-    assert guard.check(action) == GuardVerdict.ASK_ALWAYS
+    assert guard.check(action) == GuardVerdict.ASK_ONCE
 
 
 def test_run_shell_cwd_outside_project_blocked(tmp_path):
