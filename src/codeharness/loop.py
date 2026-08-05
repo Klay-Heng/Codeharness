@@ -110,6 +110,8 @@ class AgentLoop:
         decision and otherwise injects the feedback and continues.
         """
         start = time.perf_counter()
+        self._read_only_streak = 0
+        self._silent_streak = 0
         messages: list[Message] = [
             Message(role="system", content=self._system_prompt()),
             Message(role="user", content=task),
@@ -178,6 +180,26 @@ class AgentLoop:
                 round_number += 1
                 continue
             self._read_only_streak = 0
+
+            # If the LLM used tools but gave no text response, ask it
+            # to summarize what it found before declaring done.
+            if assistant_content.strip() == "" and actions:
+                silent_streak = getattr(self, "_silent_streak", 0) + 1
+                self._silent_streak = silent_streak
+                if silent_streak >= 2:
+                    status = "interrupted"
+                    break
+                messages.append(Message(
+                    role="user",
+                    content=(
+                        "You just used tools but did not provide a text "
+                        "response. Please summarize in natural language: "
+                        "what did you find? Answer the user's question."
+                    ),
+                ))
+                round_number += 1
+                continue
+            self._silent_streak = 0
 
             # If every action was blocked, tell the LLM so it can try
             # a different approach instead of silently succeeding.
