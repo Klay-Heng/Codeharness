@@ -79,6 +79,12 @@ class FailureClassifier:
 
         Returns:
             A (possibly empty) list of classified failures.
+
+        Only results that actually *failed* (success=False or exit_code != 0)
+        are pattern-matched against error signatures.  Successful tool
+        output (file contents, test summary lines like "errors: 0", etc.)
+        is never classified as a failure.  Guard-blocked actions are also
+        skipped — the loop handles those separately.
         """
         # Combine output + error for analysis
         text = result.output or ""
@@ -87,7 +93,15 @@ class FailureClassifier:
 
         failures: list[ClassifiedFailure] = []
 
-        # 1. Timeout check (duration-based, not text-based)
+        # Never classify guard-blocked actions as "failures" — the loop
+        # already tells the LLM that the action was blocked, and
+        # classifying the block message as UNKNOWN causes false escalation.
+        if result.error and "blocked by guard" in result.error:
+            return failures
+
+        # 1. Timeout check (duration-based, not text-based).
+        #    Runs regardless of success/failure — a tool that ran too long
+        #    is always suspect.
         if timeout_ms is not None and result.duration_ms > timeout_ms:
             failures.append(ClassifiedFailure(
                 category=FailureCategory.TIMEOUT,
@@ -95,7 +109,20 @@ class FailureClassifier:
                 raw_output=text,
             ))
 
+        # Gate for the *generic* error patterns (steps 4-5, 7).  These
+        # regexes can match incidental words in file content or test
+        # summary lines ("errors: 0"), so they only run when the tool
+        # actually reports failure.  Highly-structured patterns (lint /
+        # mypy — steps 2-3) have a specific ``file:line:col: CODE`` format
+        # that makes false positives in file content vanishingly unlikely,
+        # so they always run.
+        is_failure = (
+            result.success is False
+            or (result.exit_code is not None and result.exit_code != 0)
+        )
+
         # 2. Lint warnings (ruff format: file:line:col: CODE message)
+        #    Always run — the format is too specific to false-match.
         for m in _RUFF_PAT.finditer(text):
             failures.append(ClassifiedFailure(
                 category=FailureCategory.LINT_WARNING,
@@ -106,6 +133,7 @@ class FailureClassifier:
             ))
 
         # 3. mypy type errors (file:line: error: message)
+        #    Always run — same rationale as lint.
         for m in _MYPY_PAT.finditer(text):
             failures.append(ClassifiedFailure(
                 category=FailureCategory.TYPE_ERROR,
@@ -115,47 +143,43 @@ class FailureClassifier:
                 raw_output=text,
             ))
 
-        # 4. SyntaxError (with file/line from traceback)
-        for cat, pat in self._COMPILED:
-            if cat in (FailureCategory.LINT_WARNING, FailureCategory.TYPE_ERROR):
-                continue  # handled above with structured parsing
-            match = pat.search(text)
-            if match:
-                f = ClassifiedFailure(
-                    category=cat,
-                    message=match.group(1).strip() if match.lastindex else text[:200],
-                    raw_output=text,
-                )
-                # Extract file:line from the DEEPEST traceback frame (the
-                # last `File "...", line N` in the text).  The first frame
-                # is usually the outermost caller (framework internals or
-                # "<string>"), not where the error actually occurred.
-                frames = list(_FILE_LINE_PAT.finditer(text))
-                if frames:
-                    deepest = frames[-1]
-                    f.file = deepest.group(1)
-                    f.line = int(deepest.group(2))
-                failures.append(f)
+        # 4-5. Generic error patterns — only on actual failures.
+        if is_failure:
+            # 4. SyntaxError / ImportError / RuntimeError / AssertionError
+            for cat, pat in self._COMPILED:
+                if cat in (FailureCategory.LINT_WARNING, FailureCategory.TYPE_ERROR):
+                    continue  # handled above
+                match = pat.search(text)
+                if match:
+                    f = ClassifiedFailure(
+                        category=cat,
+                        message=match.group(1).strip() if match.lastindex else text[:200],
+                        raw_output=text,
+                    )
+                    frames = list(_FILE_LINE_PAT.finditer(text))
+                    if frames:
+                        deepest = frames[-1]
+                        f.file = deepest.group(1)
+                        f.line = int(deepest.group(2))
+                    failures.append(f)
 
-        # 5. Pytest assertion failures (structured output)
-        for m in _PYTEST_FAIL_PAT.finditer(text):
-            filename = m.group(1)
-            msg = m.group(2).strip()
-            # Only add if not already found via AssertionError pattern
-            if not any(
-                fe.category == FailureCategory.ASSERTION_FAILURE and fe.file == filename
-                for fe in failures
-            ):
-                # Determine if this is assertion or runtime
-                if "AssertionError" in msg:
-                    cat = FailureCategory.ASSERTION_FAILURE
-                elif "Error" in msg:
-                    cat = FailureCategory.RUNTIME_ERROR
-                else:
-                    cat = FailureCategory.UNKNOWN
-                failures.append(ClassifiedFailure(
-                    category=cat, file=filename, message=msg, raw_output=text,
-                ))
+            # 5. Pytest assertion failures (structured output)
+            for m in _PYTEST_FAIL_PAT.finditer(text):
+                filename = m.group(1)
+                msg = m.group(2).strip()
+                if not any(
+                    fe.category == FailureCategory.ASSERTION_FAILURE and fe.file == filename
+                    for fe in failures
+                ):
+                    if "AssertionError" in msg:
+                        cat = FailureCategory.ASSERTION_FAILURE
+                    elif "Error" in msg:
+                        cat = FailureCategory.RUNTIME_ERROR
+                    else:
+                        cat = FailureCategory.UNKNOWN
+                    failures.append(ClassifiedFailure(
+                        category=cat, file=filename, message=msg, raw_output=text,
+                    ))
 
         # 6. Command failed fallback: exit_code != 0 but nothing matched
         if not failures and result.exit_code and result.exit_code != 0:
@@ -165,9 +189,9 @@ class FailureClassifier:
                 raw_output=text,
             ))
 
-        # 7. Unknown fallback: unparseable error output with exit_code=0
-        # Only trigger if the text looks like an error (not "4 passed in 0.5s")
-        if not failures and text.strip():
+        # 7. Unknown fallback — only on actual failures, and only when
+        #    the text genuinely looks like an error message.
+        if is_failure and not failures and text.strip():
             error_indicators = r"(?i)(error|fail|traceback|exception|warning|trace|abort|signal)"
             if re.search(error_indicators, text):
                 failures.append(ClassifiedFailure(
