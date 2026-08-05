@@ -106,9 +106,9 @@ class DeepSeekBackend:
     def _format_tools(tools: list[dict]) -> list[dict[str, Any]]:
         """Convert registry tool descriptions to OpenAI function-calling format.
 
-        The registry knows name/description/risk_level but no parameter
-        schemas, so an open object schema is emitted (the model infers
-        parameters from the description).
+        Each tool now exposes a ``parameters_schema`` dict with the full
+        JSON Schema for its parameters so the model receives structured
+        parameter metadata, not just a text description.
         """
         return [
             {
@@ -116,7 +116,10 @@ class DeepSeekBackend:
                 "function": {
                     "name": tool["name"],
                     "description": tool.get("description", ""),
-                    "parameters": {"type": "object", "properties": {}},
+                    "parameters": tool.get(
+                        "parameters_schema",
+                        {"type": "object", "properties": {}},
+                    ),
                 },
             }
             for tool in tools

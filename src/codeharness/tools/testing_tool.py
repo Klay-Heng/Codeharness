@@ -28,6 +28,20 @@ class RunTestsTool:
         "optional flags (list or space-separated string)."
     )
     risk_level = RiskLevel.LOW
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "File or directory to run tests on (default: current directory).",
+            },
+            "flags": {
+                "type": "string",
+                "description": "Extra pytest flags as a space-separated string (e.g. '-v -x').",
+            },
+        },
+        "required": [],
+    }
 
     def __init__(self, default_timeout: int = 300) -> None:
         self.default_timeout = default_timeout

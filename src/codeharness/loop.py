@@ -124,6 +124,27 @@ class AgentLoop:
             )
             last_results = results
 
+            # If the LLM produced no tool calls with empty content in the
+            # first round it means the model produced nothing useful.
+            # Push back once so action-oriented tasks get action.  A
+            # non-empty text response (question answer, completion
+            # message) is allowed through.
+            if (
+                not actions
+                and not response.content.strip()
+                and round_number == 1
+                and len(history) == 0
+            ):
+                messages.append(Message(
+                    role="user",
+                    content=(
+                        "You produced no output and no tool calls. "
+                        "Please use the available tools to work on the task."
+                    ),
+                ))
+                round_number += 1
+                continue
+
             # If every action was blocked, tell the LLM so it can try
             # a different approach.
             blocked = [
@@ -192,10 +213,19 @@ class AgentLoop:
     def _system_prompt(self) -> str:
         """Build the system prompt from the memory context + config."""
         import platform
+        platform_name = platform.system()
+        if platform_name == "Windows":
+            shell_hint = "Use Windows commands (dir, type, findstr) not Unix (ls, cat, grep)."
+        else:
+            shell_hint = "Use Unix commands (ls, cat, grep) appropriate for your platform."
+
         parts = [
             "You are CodeHarness, an autonomous coding agent.",
-            f"Environment: {platform.system()} ({platform.release()}). "
-            "Use Windows commands (dir, type, findstr) not Unix (ls, cat, grep).",
+            f"Environment: {platform_name} ({platform.release()}). {shell_hint}",
+            "",
+            "LANGUAGE: Respond in the same language as the user's request. "
+            "If the user writes in Chinese (中文), respond in Chinese. "
+            "If the user writes in English, respond in English.",
             "",
             "IMPORTANT:",
             "- When asked to create/modify a file, call write_file to write it.",

@@ -207,7 +207,10 @@ class REPL:
         )
 
     def _render_run(self, result: RunResult) -> None:
-        """Render one completed run: thought panels + color-coded summary."""
+        """Render one completed run: agent thoughts + round panels + summary."""
+        # Show the agent's text responses (what it "said").
+        if result.final_context is not None:
+            self._render_agent_thoughts(result.final_context)
         if result.final_context is not None:
             for i, record in enumerate(
                 result.final_context.correction_history, start=1
@@ -232,6 +235,24 @@ class REPL:
         summary.append(result.status, style=style)
         summary.append(f"] {result.rounds} round(s), {result.duration_ms} ms")
         self.console.print(summary)
+
+    def _render_agent_thoughts(self, ctx: TurnContext) -> None:
+        """Display the LLM's text responses (its "thoughts") from the conversation.
+
+        This is what the agent actually said — its reasoning, answers, and
+        explanations.  Previously users never saw this; they only saw round
+        decisions and tool results.
+        """
+        for message in ctx.messages:
+            if message.role == "assistant" and message.content and message.content.strip():
+                self.console.print(
+                    Panel(
+                        Text(message.content.strip(), style="bright_white"),
+                        title="Agent",
+                        border_style="green",
+                        expand=False,
+                    )
+                )
 
     def _render_round(self, record: CorrectionRecord, round_number: int) -> None:
         """Render one round as a folded panel ("thoughts", collapsed)."""

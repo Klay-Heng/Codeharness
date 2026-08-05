@@ -24,6 +24,24 @@ class ReadFileTool:
         "line to read (1-based, inclusive)."
     )
     risk_level = RiskLevel.LOW
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "The file path to read (relative or absolute).",
+            },
+            "start_line": {
+                "type": "integer",
+                "description": "First line to read (1-based, optional).",
+            },
+            "end_line": {
+                "type": "integer",
+                "description": "Last line to read (1-based, inclusive, optional).",
+            },
+        },
+        "required": ["path"],
+    }
 
     def execute(self, params: dict) -> ToolResult:
         path = params.get("path") or params.get("file")
@@ -85,6 +103,20 @@ class WriteFileTool:
         "required) — the full text content to write into the file."
     )
     risk_level = RiskLevel.MEDIUM
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "The file path to write to (relative to project root).",
+            },
+            "content": {
+                "type": "string",
+                "description": "The full text content to write into the file.",
+            },
+        },
+        "required": ["path", "content"],
+    }
 
     def __init__(self, root: str | Path = ".") -> None:
         self.root = str(root)

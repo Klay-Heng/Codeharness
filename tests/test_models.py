@@ -581,6 +581,7 @@ class TestToolProtocol:
             name = "read_file"
             description = "Read a file"
             risk_level = RiskLevel.LOW
+            parameters_schema = {"type": "object", "properties": {}}
 
             def execute(self, params):
                 return ToolResult(action_id="x", success=True)

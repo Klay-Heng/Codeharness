@@ -23,6 +23,24 @@ class RunShellTool:
         "(int, optional) — timeout in seconds (default 60)."
     )
     risk_level = RiskLevel.MEDIUM
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "The shell command to execute.",
+            },
+            "cwd": {
+                "type": "string",
+                "description": "Working directory for the command (must be inside the project).",
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Timeout in seconds (default 60).",
+            },
+        },
+        "required": ["command", "cwd"],
+    }
 
     def __init__(self, default_timeout: int = 60) -> None:
         self.default_timeout = default_timeout

@@ -25,6 +25,25 @@ class PackageOpTool:
         "list), package (required for install/uninstall), optional args."
     )
     risk_level = RiskLevel.HIGH
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "description": "Pip operation to perform.",
+                "enum": ["install", "uninstall", "list"],
+            },
+            "package": {
+                "type": "string",
+                "description": "Package name (required for install/uninstall).",
+            },
+            "args": {
+                "type": "string",
+                "description": "Additional pip arguments as space-separated string.",
+            },
+        },
+        "required": ["operation"],
+    }
 
     def __init__(
         self, python: str | None = None, default_timeout: int = 180

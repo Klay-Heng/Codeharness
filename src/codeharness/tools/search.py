@@ -28,15 +28,33 @@ class SearchCodeTool:
         "(directory, default cwd), optional glob (filename filter)."
     )
     risk_level = RiskLevel.LOW
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "The regex pattern to search for.",
+            },
+            "path": {
+                "type": "string",
+                "description": "Directory to search in (default: current directory).",
+            },
+            "glob": {
+                "type": "string",
+                "description": "Filename filter pattern, e.g. '*.py'.",
+            },
+        },
+        "required": ["pattern"],
+    }
 
-    def _search_python(self, pattern: str, root: Path, glob: str | None) -> str:
+    def _search_python(self, pattern: str, root: Path, file_glob: str | None) -> str:
         """Pure-Python fallback producing the same path:line:text format."""
         rx = re.compile(pattern)
         hits: list[str] = []
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
-            if glob and not fnmatch.fnmatch(path.name, glob):
+            if file_glob and not fnmatch.fnmatch(path.name, file_glob):
                 continue
             try:
                 lines = path.read_text(
@@ -60,26 +78,30 @@ class SearchCodeTool:
             return ToolResult(
                 action_id="", success=False, error=f"path does not exist: {root}"
             )
-        glob = params.get("glob")
+        file_glob = params.get("glob")
 
         rg = shutil.which("rg")
         exe = rg or shutil.which("grep")
-        if exe is None:
+        # Use the pure-Python fallback when a glob filter is active or no
+        # external tool is available.  The Python path handles glob
+        # deterministically across platforms, while rg --glob and grep
+        # --include have subtle behavioural differences on Windows.
+        if exe is None or file_glob is not None:
             return ToolResult(
                 action_id="",
                 success=True,
-                output=self._search_python(str(pattern), root, glob),
+                output=self._search_python(str(pattern), root, file_glob),
             )
 
         if rg:
             cmd = [rg, "--line-number", "--no-heading"]
-            if glob:
-                cmd += ["--glob", str(glob)]
+            if file_glob:
+                cmd += ["--glob", str(file_glob)]
             cmd += [str(pattern), str(root)]
         else:
             cmd = [exe, "-rn"]
-            if glob:
-                cmd += ["--include", str(glob)]
+            if file_glob:
+                cmd += ["--include", str(file_glob)]
             cmd += [str(pattern), str(root)]
 
         try:
@@ -125,6 +147,16 @@ class GlobFilesTool:
     name = "glob_files"
     description = "Match file paths by glob pattern, e.g. '**/*.py'."
     risk_level = RiskLevel.LOW
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "Glob pattern to match, e.g. '**/*.py' or 'src/**/*.ts'.",
+            },
+        },
+        "required": ["pattern"],
+    }
 
     def execute(self, params: dict) -> ToolResult:
         pattern = params.get("pattern")

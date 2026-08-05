@@ -34,12 +34,13 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def list_available(self) -> list[dict]:
-        """Describe every non-disabled tool as ``{name, description, risk_level}``."""
+        """Describe every non-disabled tool with name, description, risk_level, and parameters_schema."""
         return [
             {
                 "name": tool.name,
                 "description": tool.description,
                 "risk_level": tool.risk_level,
+                "parameters_schema": getattr(tool, "parameters_schema", {"type": "object", "properties": {}}),
             }
             for name, tool in self._tools.items()
             if name not in self.config.disabled

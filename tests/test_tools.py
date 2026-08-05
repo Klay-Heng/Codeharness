@@ -50,6 +50,7 @@ class _FakeTool:
         self.name = name
         self.description = description
         self.risk_level = risk_level
+        self.parameters_schema = {"type": "object", "properties": {}}
         self._output = output
         self._error = error
         self._delay = delay
@@ -181,6 +182,7 @@ def test_list_available_returns_tool_info():
             "name": "glob_files",
             "description": "Match file patterns",
             "risk_level": RiskLevel.LOW,
+            "parameters_schema": {"type": "object", "properties": {}},
         }
     ]
 

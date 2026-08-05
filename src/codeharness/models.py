@@ -86,6 +86,7 @@ class Tool(Protocol):
     name: str
     description: str
     risk_level: RiskLevel
+    parameters_schema: dict
 
     def execute(self, params: dict) -> ToolResult: ...
 

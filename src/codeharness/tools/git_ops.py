@@ -25,6 +25,25 @@ class GitOpTool:
     )
     # VARIES per operation (SPEC table); MEDIUM is the protocol-fixed base.
     risk_level = RiskLevel.MEDIUM
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "description": "Git operation: status, diff, log, commit, add, branch, checkout, etc.",
+                "enum": ["status", "diff", "log", "commit", "add", "branch", "checkout", "show", "ls-files"],
+            },
+            "args": {
+                "type": "string",
+                "description": "Additional arguments as space-separated string.",
+            },
+            "cwd": {
+                "type": "string",
+                "description": "Working directory for the git command.",
+            },
+        },
+        "required": ["operation"],
+    }
 
     def __init__(self, default_timeout: int = 60) -> None:
         self.default_timeout = default_timeout
