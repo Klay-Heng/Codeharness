@@ -41,6 +41,7 @@ from codeharness.models import (
     CorrectionRecord,
     GuardVerdict,
     LLMBackend,
+    LoopDecision,
     Message,
     RunResult,
     ToolResult,
@@ -83,6 +84,20 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     async def run(self, task: str) -> RunResult:
+        """Execute ``task`` to completion.
+
+        The loop follows a simple protocol:
+
+        1. Call the LLM with the current conversation and tool list.
+        2. If the LLM returns no tool calls, it is signalling completion
+           — return success (or push back once if the response is empty).
+        3. Otherwise execute every tool call, feed results back into the
+           conversation, and evaluate through the feedback engine.
+        4. If the feedback engine escalates (repeated errors / regression),
+           stop.  Otherwise **always give the LLM another turn** so it can
+           read → think → write → test across multiple rounds.
+        5. ``max_correction_rounds`` is a hard safety limit.
+        """
         start = time.perf_counter()
         messages: list[Message] = [
             Message(role="system", content=self._system_prompt()),
@@ -119,31 +134,42 @@ class AgentLoop:
                 tool_calls=assistant_tool_calls if assistant_tool_calls else None,
             ))
 
+            # ---- No tool calls: the LLM considers the task done ----------
+            if not actions:
+                if not response.content.strip() and round_number == 1:
+                    # Completely empty first response — push back once.
+                    messages.append(Message(
+                        role="user",
+                        content=(
+                            "You produced no output and no tool calls. "
+                            "Please use the available tools to work on "
+                            "the task."
+                        ),
+                    ))
+                    round_number += 1
+                    continue
+                # Non-empty text or later round: genuine completion.
+                status = "success"
+                history.append(
+                    CorrectionRecord(
+                        round_id=round_number,
+                        action_ids=[],
+                        failures_before=[],
+                        files_touched=set(),
+                        decision=LoopDecision(
+                            action="stop_success",
+                            reason="LLM signalled completion (no tool calls)",
+                            round_number=round_number,
+                        ),
+                    )
+                )
+                break
+
+            # ---- Execute the round's tool calls --------------------------
             results, action_ids, files_touched = await self._execute_round(
                 actions, messages
             )
             last_results = results
-
-            # If the LLM produced no tool calls with empty content in the
-            # first round it means the model produced nothing useful.
-            # Push back once so action-oriented tasks get action.  A
-            # non-empty text response (question answer, completion
-            # message) is allowed through.
-            if (
-                not actions
-                and not response.content.strip()
-                and round_number == 1
-                and len(history) == 0
-            ):
-                messages.append(Message(
-                    role="user",
-                    content=(
-                        "You produced no output and no tool calls. "
-                        "Please use the available tools to work on the task."
-                    ),
-                ))
-                round_number += 1
-                continue
 
             # If every action was blocked, tell the LLM so it can try
             # a different approach.
@@ -164,7 +190,7 @@ class AgentLoop:
                     ),
                 ))
 
-            # Evaluate the round through the feedback engine.
+            # ---- Feedback: classify failures, check escalation -----------
             ctx = self.feedback.evaluate(results, round_number, history)
             history.append(
                 CorrectionRecord(
@@ -176,20 +202,18 @@ class AgentLoop:
                 )
             )
 
-            if ctx.decision is None:
-                status = "max_rounds"
-                break
-            if ctx.decision.action == "stop_success":
-                status = "success"
-                break
-            if ctx.decision.action == "stop_failure":
-                status = "max_rounds" if round_number >= max_rounds else "failure"
-                break
-            if ctx.decision.action == "escalate":
+            if ctx.decision is not None and ctx.decision.action == "escalate":
                 status = "interrupted"
                 break
 
-            # retry: hand the serialized feedback back to the LLM.
+            # Hard stop at max rounds (only if the LLM truly cannot fix).
+            if round_number >= max_rounds:
+                status = "max_rounds"
+                break
+
+            # ---- Always give the LLM another turn ------------------------
+            # Inject the serialized feedback so the LLM sees tool results
+            # and can decide the next step (read → write → test → ...).
             messages.append(Message(role="user", content=ctx.serialize()))
             round_number += 1
 

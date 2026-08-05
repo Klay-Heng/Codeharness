@@ -139,7 +139,8 @@ async def test_uses_tools_then_completes(temp_project):
     result = await loop.run("Read main.py and save notes.")
 
     assert result.status == "success"
-    assert result.rounds == 1
+    # Round 1 executes tools; round 2 is the "DONE" completion signal.
+    assert result.rounds == 2
     # Both tool calls actually executed and had an effect on disk.
     notes = temp_project / "notes.txt"
     assert notes.exists()
@@ -169,10 +170,11 @@ async def test_corrects_after_feedback(tmp_path):
     result = await loop.run("Make bad.py valid Python.")
 
     assert result.status == "success"
-    assert result.rounds == 2
+    # Round 1: broken; round 2: fixed; round 3: MockBackend DONE completion.
+    assert result.rounds == 3
 
     history = result.final_context.correction_history
-    assert len(history) == 2
+    assert len(history) == 3
     # Round 1: the syntax error was detected, with file/line extracted.
     failures = history[0].failures_before
     assert len(failures) >= 1
@@ -242,8 +244,9 @@ async def test_guard_blocks_dangerous_action(tmp_path):
     result = await loop.run("Clean up the filesystem.")
 
     assert executed == []  # the dangerous command never ran
+    # Round 1: blocked; round 2: MockBackend DONE (completion signal).
     assert result.status == "success"  # nothing failed; action was blocked
-    assert result.rounds == 1
+    assert result.rounds == 2
     results = result.final_context.last_results
     assert len(results) == 1
     assert results[0].success is False
