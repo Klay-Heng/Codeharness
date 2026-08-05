@@ -125,15 +125,6 @@ class AgentLoop:
             )
             actions = self.parser.parse(response)
 
-            # DEBUG: log the raw LLM response for troubleshooting
-            import sys
-            print(
-                f"\n[DEBUG Round {round_number}] "
-                f"content={response.content[:200]!r}, "
-                f"tool_calls={[(tc['name'], list(tc['params'].keys())) for tc in response.tool_calls]!r}",
-                file=sys.stderr, flush=True,
-            )
-
             # Echo the assistant response (with tool_calls) into the
             # conversation so DeepSeek/OpenAI-compatible APIs see the
             # required assistant -> tool message sequence.
@@ -147,6 +138,34 @@ class AgentLoop:
                 actions, messages
             )
             last_results = results
+
+            # If the LLM only performed reads (no writes/shell/tests),
+            # remind it that reading alone does not complete a modify task.
+            # After 2 consecutive read-only rounds, escalate.
+            write_tools = {"write_file", "run_shell", "run_tests", "git_op", "package_op"}
+            executed_tools = {
+                a.tool for a, r in zip(actions, results)
+                if r.success and "blocked" not in (r.error or "")
+            }
+            if executed_tools and executed_tools.isdisjoint(write_tools):
+                read_only_streak = getattr(self, "_read_only_streak", 0) + 1
+                self._read_only_streak = read_only_streak
+                if read_only_streak >= 2:
+                    status = "interrupted"
+                    break
+                messages.append(Message(
+                    role="user",
+                    content=(
+                        "You have only performed read operations so far. "
+                        "If the task requires modifying or creating files, "
+                        "you MUST use write_file to actually write the "
+                        "changes. Reading alone does not complete a "
+                        "modify/create task. Please continue."
+                    ),
+                ))
+                round_number += 1
+                continue
+            self._read_only_streak = 0
 
             # If every action was blocked, tell the LLM so it can try
             # a different approach instead of silently succeeding.
