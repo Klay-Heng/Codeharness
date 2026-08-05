@@ -39,6 +39,7 @@ class _FakeFunction:
 
 class _FakeToolCall:
     def __init__(self, name: str, arguments: str | None = None) -> None:
+        self.id = f"fake_{name}"
         self.function = _FakeFunction(name, arguments)
 
 
@@ -215,8 +216,8 @@ async def test_chat_parses_tool_calls_with_json_arguments(monkeypatch):
     result = await backend.chat([Message(role="user", content="inspect")])
 
     assert result.tool_calls == [
-        {"name": "read_file", "params": {"path": "src/main.py"}},
-        {"name": "run_shell", "params": {"command": "pytest", "cwd": "tests"}},
+        {"id": "fake_read_file", "name": "read_file", "params": {"path": "src/main.py"}},
+        {"id": "fake_run_shell", "name": "run_shell", "params": {"command": "pytest", "cwd": "tests"}},
     ]
     assert result.content == ""
     assert result.finish_reason == "stop"
@@ -238,9 +239,9 @@ async def test_chat_malformed_arguments_do_not_crash(monkeypatch):
 
     # Unparseable/absent/non-object arguments degrade to empty params.
     assert result.tool_calls == [
-        {"name": "read_file", "params": {}},
-        {"name": "read_file", "params": {}},
-        {"name": "read_file", "params": {}},
+        {"id": "fake_read_file", "name": "read_file", "params": {}},
+        {"id": "fake_read_file", "name": "read_file", "params": {}},
+        {"id": "fake_read_file", "name": "read_file", "params": {}},
     ]
     assert result.content == "oops"
 

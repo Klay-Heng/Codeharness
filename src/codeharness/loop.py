@@ -132,11 +132,11 @@ class AgentLoop:
             assistant_content = response.content or ""
             assistant_tool_calls = [
                 {
-                    "id": f"call_{i}",
+                    "id": action.action_id,
                     "type": "function",
                     "function": {"name": tc["name"], "arguments": json.dumps(tc["params"])},
                 }
-                for i, tc in enumerate(response.tool_calls)
+                for tc, action in zip(response.tool_calls, actions)
             ]
             messages.append(Message(
                 role="assistant",

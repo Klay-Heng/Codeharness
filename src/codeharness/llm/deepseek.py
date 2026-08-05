@@ -144,5 +144,9 @@ class DeepSeekBackend:
                     parsed = None
                 if isinstance(parsed, dict):
                     params = parsed
-            decoded.append({"name": call.function.name, "params": params})
+            decoded.append({
+                "id": getattr(call, "id", f"call_{len(decoded)}"),
+                "name": call.function.name,
+                "params": params,
+            })
         return decoded
