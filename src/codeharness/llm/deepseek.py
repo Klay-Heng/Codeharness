@@ -55,26 +55,31 @@ class DeepSeekBackend:
     async def chat(
         self, messages: list[Message], tools: list[dict] | None = None
     ) -> LLMResponse:
-        """Send the conversation and return the model's response.
-
-        Args:
-            messages: Conversation in the harness Message format.
-            tools: Registry tool descriptions
-                (``[{name, description, risk_level}, ...]``); converted
-                to OpenAI function-calling shape, or omitted entirely
-                when empty/None.
-
-        Returns:
-            An LLMResponse with free text plus decoded tool calls
-            (``{"name": ..., "params": {...}}`` each).
-        """
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[self._format_message(m) for m in messages],
-            tools=self._format_tools(tools) if tools else None,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-        )
+        """Send the conversation and return the model's response."""
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[self._format_message(m) for m in messages],
+                tools=self._format_tools(tools) if tools else None,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            )
+        except Exception as exc:
+            body = ""
+            if hasattr(exc, "response"):
+                try:
+                    if hasattr(exc.response, "json"):
+                        body = str(exc.response.json())
+                    else:
+                        body = str(exc.response.content)
+                except Exception:  # noqa: BLE001 - best-effort error detail, must not fail
+                    body = "(unreadable)"
+            raise RuntimeError(
+                f"DeepSeek API error: {exc}\n"
+                f"Response body: {body}\n"
+                f"Model: {self.model}, Messages: {len(messages)}, "
+                f"Tools: {len(tools) if tools else 0}"
+            ) from exc
         choice = response.choices[0]
         return LLMResponse(
             content=choice.message.content or "",
@@ -106,24 +111,32 @@ class DeepSeekBackend:
     def _format_tools(tools: list[dict]) -> list[dict[str, Any]]:
         """Convert registry tool descriptions to OpenAI function-calling format.
 
-        Each tool now exposes a ``parameters_schema`` dict with the full
-        JSON Schema for its parameters so the model receives structured
-        parameter metadata, not just a text description.
+        Returns a deep copy of each tool's ``parameters_schema`` with
+        empty ``required`` lists stripped — some providers reject them.
         """
-        return [
-            {
+        formatted: list[dict[str, Any]] = []
+        for tool in tools:
+            schema = tool.get(
+                "parameters_schema",
+                {"type": "object", "properties": {}},
+            )
+            # Deep-copy so we never mutate the shared ClassVar.
+            params: dict[str, Any] = {
+                "type": schema.get("type", "object"),
+                "properties": dict(schema.get("properties", {})),
+            }
+            required = schema.get("required")
+            if required:  # omit empty [] — some APIs reject it
+                params["required"] = list(required)
+            formatted.append({
                 "type": "function",
                 "function": {
                     "name": tool["name"],
                     "description": tool.get("description", ""),
-                    "parameters": tool.get(
-                        "parameters_schema",
-                        {"type": "object", "properties": {}},
-                    ),
+                    "parameters": params,
                 },
-            }
-            for tool in tools
-        ]
+            })
+        return formatted
 
     @staticmethod
     def _decode_tool_calls(tool_calls: list | None) -> list[dict[str, Any]]:
