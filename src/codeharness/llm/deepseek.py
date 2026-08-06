@@ -65,19 +65,23 @@ class DeepSeekBackend:
                 temperature=self.temperature,
             )
         except Exception as exc:
-            body = ""
-            if hasattr(exc, "response"):
-                try:
-                    if hasattr(exc.response, "json"):
-                        body = str(exc.response.json())
-                    else:
-                        body = str(exc.response.content)
-                except Exception:  # noqa: BLE001 - best-effort error detail, must not fail
-                    body = "(unreadable)"
+            detail_parts = [f"Error: {exc}"]
+            body = getattr(exc, "body", None)
+            if body is not None:
+                detail_parts.append(f"Response: {body}")
+            message = getattr(exc, "message", None)
+            if message and message != str(exc):
+                detail_parts.append(f"Message: {message}")
+            # Include the first formatted tool to help debug schema issues.
+            if tools:
+                formatted = self._format_tools(tools)
+                detail_parts.append(
+                    "First tool sent: "
+                    + json.dumps(formatted[0], indent=2, ensure_ascii=False)
+                )
             raise RuntimeError(
-                f"DeepSeek API error: {exc}\n"
-                f"Response body: {body}\n"
-                f"Model: {self.model}, Messages: {len(messages)}, "
+                "\n".join(detail_parts)
+                + f"\nModel: {self.model}, Messages: {len(messages)}, "
                 f"Tools: {len(tools) if tools else 0}"
             ) from exc
         choice = response.choices[0]
