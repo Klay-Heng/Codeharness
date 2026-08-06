@@ -9,6 +9,7 @@ Both implement the ``Tool`` protocol from models.py (synchronous
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from codeharness.models import RiskLevel, ToolResult
 
@@ -24,7 +25,7 @@ class ReadFileTool:
         "line to read (1-based, inclusive)."
     )
     risk_level = RiskLevel.LOW
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "path": {
@@ -103,7 +104,7 @@ class WriteFileTool:
         "required) — the full text content to write into the file."
     )
     risk_level = RiskLevel.MEDIUM
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "path": {

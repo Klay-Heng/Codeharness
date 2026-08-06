@@ -10,6 +10,7 @@ from __future__ import annotations
 import shlex
 import subprocess
 import sys
+from typing import ClassVar
 
 from codeharness.models import RiskLevel, ToolResult
 
@@ -25,7 +26,7 @@ class PackageOpTool:
         "list), package (required for install/uninstall), optional args."
     )
     risk_level = RiskLevel.HIGH
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "operation": {
