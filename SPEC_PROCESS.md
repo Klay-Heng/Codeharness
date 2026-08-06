@@ -42,15 +42,7 @@ Brainstorming 阶段，智能体共追问了 **11 个逐层递进的问题**，�
 
 ### 迭代 1：设计章节逐节确认
 
-```
-AI: "设计 §1：系统总览与模块职责。9 个模块，每个有明确职责和对外接口。合理吗？"
-我: "合理"
-AI: "设计 §2：Agent Loop 主循环。确定性状态机，5 种停机条件。合理吗？"
-我: "合理"
-...（共 7 个设计章节逐一确认）
-```
-
-逐节确认让我有机会在每一节深入思考，避免了"全部写完后才发现理解偏差"。反馈闭环那一节（§3）花了最多时间确认。
+逐节确认（共 7 个设计章节）让我有机会在每一节深入思考，避免了"全部写完后才发现理解偏差"。反馈闭环那一节（§3）花了最多时间确认。
 
 ### 迭代 2：DeepSeek tool_calls 参数名不匹配
 
@@ -58,18 +50,18 @@ AI: "设计 §2：Agent Loop 主循环。确定性状态机，5 种停机条件�
 问题：输入"修改 hello.py"后，Guard 拦截了 write_file。审批后文件仍未修改。
 Debug 发现 DeepSeek 返回的参数名是 file 而非工具期望的 path。
 根因：_format_tools 发送空 properties {}，DeepSeek 只能猜参数名。
-修复：给每个工具描述加入明确的参数文档（path/content/cwd），同时让工具同时接受 path 和 file。
+修复：给每个工具描述加入明确的参数文档，同时让工具同时接受 path 和 file。
 ```
 
 ### 迭代 3：DeepSeek API tool_calls ID 不匹配导致 400 错误
 
 ```
-问题：BadRequestError: "Messages with role 'tool' must be a response to a 
+问题：BadRequestError: "Messages with role 'tool' must be a response to a
 preceding message with 'tool_calls'"
 根因：DeepSeek 原始 tool_call.id 在 _decode_tool_calls 中被丢弃，
 assistant/tool 消息的 tool_call_id 三者不一致。
 修复：_decode_tool_calls 保留原始 id → parser 传到 Action.action_id →
-loop 用 action.action_id 构建 assistant tool_calls。全程一致。涉及 4 个文件。
+loop 用 action.action_id 构建 assistant tool_calls。全程一致，涉及 4 个文件。
 ```
 
 ---
@@ -99,59 +91,68 @@ loop 用 action.action_id 构建 assistant tool_calls。全程一致。涉及 4 
 - **任务**：从 PLAN 选 Task 1（脚手架）+ Task 2（数据模型）自主推进
 - **约束**：要求"遇到不确定之处即暂停询问，而非凭猜测继续"
 
-### 4.2 暴露的真正 SPEC/PLAN 缺陷
+### 4.2 实验直接暴露的 SPEC 缺陷（局限于 Task 1+2 涉及的文件）
 
-CodeBuddy 在实现过程中遇到了多处需要自行判断的点。以下筛选出**具有记录价值的 SPEC 缺陷**（排除了测试环境差异和已知的 Windows 限制）：
+CodeBuddy 在**实际动手写代码**的过程中，遇到了以下 SPEC/PLAN 模糊点。这些都是 Task 1（pyproject.toml、Makefile、conftest.py）和 Task 2（models.py）直接涉及的。
 
-**缺陷 1：PLAN Demo 代码出现不存在的类型名**
+**缺陷 1：TurnContext 字段定义缺失**
 
-- 现象：PLAN Task 16 的 Demo 3 代码中使用了 `FeedbackCategory`，但 SPEC 只定义了 `FailureCategory`。
-- CodeBuddy 的判断：创建 `FeedbackCategory = FailureCategory` 类型别名让两处引用都成立。
-- 性质：PLAN 中的 demo 代码未经 SPEC 对照审查，是一个笔误。
-- 修订：Demo 代码中统一为 `FailureCategory`。
+- 涉及文件：`src/codeharness/models.py`（Task 2）
+- 现象：SPEC §6.1 把 `TurnContext` 列为"核心实体"，§3.1 的 `RunResult.final_context` 类型也是它。但 SPEC 没有给出 `TurnContext` 的任何一个字段。
+- CodeBuddy 的推断：自行实现为累积容器（`messages` + `results` + `add_message`/`add_result`），因为要作为 `RunResult.final_context` 承载整段对话历史。
+- 与主 agent 对比：主 agent 的实现（`messages`, `round_count`, `last_results`, `correction_history`）和推断方向一致，但多了 `round_count` 和 `correction_history` 字段。
+- 结论：SPEC 对一个跨模块使用的核心实体只给了名字没给字段。"写下来了但没写完整"。
 
-**缺陷 2：TurnContext 字段定义缺失**
+**缺陷 2：LLMResponse.tool_calls 元素结构缺失**
 
-- 现象：SPEC §6.1 把 `TurnContext` 列为"核心实体"，§3.1 的 `RunResult.final_context` 类型是 `TurnContext`，但 SPEC 没有给出 `TurnContext` 的任何字段。
-- CodeBuddy 的推断：实现为累积容器（`messages` + `results` + `add_message`/`add_result`），因为要作为 `RunResult.final_context` 承载整段对话历史。
-- 性质：SPEC 留白。这是一个"写下来了但没有写完整"的典型案例。
-- 修订：补充 `TurnContext` 字段（`messages`, `last_results`, `correction_history`, `round_count`）。
+- 涉及文件：`src/codeharness/models.py`（Task 2），影响 Task 6（parser）和 Task 15（backend）
+- 现象：SPEC §3.2 定义了 `LLMBackend.chat()` 接口，但 `LLMResponse.tool_calls` 中每个元素的内部结构没有定义。是 `{name, params}` 还是 OpenAI 风格的 `{function: {name, arguments}}`？
+- CodeBuddy 的推断：按 PLAN MockBackend 代码推断为 `{name, params}` 格式，并判断 backend 层负责 OpenAI → 内部格式转换。
+- 与主 agent 对比：推断完全正确。但后期集成中，tool_calls 元素的 `id` 字段缺失导致了一个实际 bug——assistant 消息和 tool 结果用了不同的 ID，API 报 400 错误。
+- 结论：这是跨模块接口契约的缺失。parser/backend/loop 三方都依赖这个结构，SPEC 应当显式定义。
 
-**缺陷 3：LLMResponse.tool_calls 元素结构未定义**
+**缺陷 3：Config 嵌套结构 SPEC 未定义**
 
-- 现象：SPEC §3.2 定义了 `LLMBackend.chat()` 接口，但返回的 `LLMResponse.tool_calls` 中每个元素的内部结构没有定义。是 `{name, params}` 还是 OpenAI 风格的 `{function: {name, arguments}}`？
-- CodeBuddy 的推断：按 PLAN MockBackend 和 Demo 代码中的写法，推断为 `{name, params}` 格式，由 DeepSeek backend 层负责 OpenAI → 内部格式转换。
-- 性质：这是跨模块接口契约的缺失。parser 和 backend 都依赖这个结构，但 SPEC 没有定义它。
-- 实际影响：后期集成中，tool_calls ID 不匹配恰好就是一个由此引发的 bug——assistant 消息和 tool 结果用了不同的 ID 来源。
+- 涉及文件：`src/codeharness/models.py`（Task 2）
+- 现象：SPEC §3.7 描述了配置项的分类（LLM 参数、反馈参数等），但 §6.1 没有定义 Config 是扁平 dict 还是嵌套 dataclass。
+- CodeBuddy 的推断：按 PLAN 中 `config.llm.model` 的写法推断为 `LLMConfig`/`GuardConfig` 等嵌套 dataclass。
+- 与主 agent 对比：结构完全一致。
+- 结论：SPEC 写意图，PLAN 给线索，实现者自己补结构。增加了推理负担但没有导致错误。
 
-**缺陷 4：护栏"默认拒绝未知操作"的精确范围模糊**
+### 4.3 CodeBuddy 阅读完整 SPEC/PLAN 后的理解对比
 
-- 现象：SPEC §3.4 规则中说"默认拒绝未知操作类型"，§11 风险表写"默认拒绝未知操作类型"。但"未知操作类型"是仅指未注册的工具名，还是也包括未匹配任何规则的已知工具？
-- CodeBuddy 的预判：如果是后者，`read_file` 这类 LOW 工具若无显式放行规则会被误拦。
-- 性质：SPEC 内部表述不够精确。实际实现中应明确：默认拒绝仅针对未注册 tool 名 + 危险正则 + 越界路径，而非所有未命中规则的操作。
+以下发现不是 Task 1+2 实验直接暴露的（CodeBuddy 只实现了这两个 task），而是它**完整阅读 SPEC 和 PLAN 后**基于理解提出的与主 agent 实现的对比点。
 
-**缺陷 5：Config 子结构在 SPEC 和 PLAN 之间靠 PLAN 补全**
+**对比1：PLAN Demo 代码中的命名笔误**
 
-- 现象：SPEC §3.7 列出配置项但 §6.1 的数据结构中没有定义 Config 的嵌套结构。PLAN 的 `main.py` 示例代码中引用了 `config.llm.model`，暗示了嵌套关系但并不显式。
-- CodeBuddy 的推断：按 `LLMConfig`/`GuardConfig`/`FeedbackConfig` 等拆分为嵌套 dataclass。
-- 性质：SPEC 写意图，PLAN 给线索，实现者补结构。不算错，但增加了冷启动中 agent 的推断负担。
+- CodeBuddy 注意到：PLAN Task 16 的 Demo 3 代码使用了 `FeedbackCategory`，但 SPEC 只定义了 `FailureCategory`。
+- 与主 agent 对比：主 agent 全程使用 `FailureCategory`，Demo 3 已统一。这是 PLAN 的 demo 草稿未经 SPEC 交叉审查的笔误。
+- 可改进点：PLAN 中嵌入的示例代码应与 SPEC 做一次类型名一致性检查。
 
-### 4.3 被排除的"伪缺陷"
+**对比2：护栏"默认拒绝未知操作"的精确范围**
 
-CodeBuddy 还报告了以下问题，但经审查确认**不是 SPEC 缺陷**，不予记录：
+- CodeBuddy 注意到：SPEC §3.4 和 §11 都写"默认拒绝未知操作类型"。它在未实现 guard 的情况下预判：若"未知操作类型"包括未命中任何规则的已知工具，`read_file` 这类 LOW 工具会被误拦。
+- 与主 agent 对比：主 agent 的实现逻辑是：未知工具名 → ASK_ALWAYS，已知工具按 risk_level 映射（LOW→ALLOW），再加危险正则和路径边界覆盖。CodeBuddy 预判的"过度拦截"没有出现，但精确表述可以避免这种误读。
+- 可改进点：SPEC 的"默认拒绝未知操作类型"应精确表述为"对未注册的工具名拒绝执行"。
+
+### 4.4 被排除的报告
+
+CodeBuddy 还报告了以下问题，经审查不是 SPEC 缺陷，不予记录：
 
 | 报告 | 排除原因 |
 |---|---|
-| 项目根目录 SPEC 与 PLAN 不匹配 | CodeBuddy 在另一个文件夹运行，不是 SPEC 问题 |
-| make 不存在于目标环境 | 已知的 Windows 限制，Plan 已有 `make test` 或等价命令 |
-| RiskLevel 类属性 vs 实例属性 | PEP 544 下两者都满足 Protocol，属于正常的设计决策灵活度 |
-| Action.params 类型宽松 | SPEC 有意使用 `dict[str, Any]`，参数校验在工具层完成 |
+| 项目根目录 SPEC 与 PLAN 不匹配 | CodeBuddy 在独立文件夹运行，根目录不同属于测试环境差异 |
+| Windows 无 `make` 命令 | 已知的 Windows 限制，Plan 已有等价命令 |
+| RiskLevel 是类属性还是实例属性 | PEP 544 Protocol 两者都满足，属于正常的设计灵活性 |
+| Action.params 类型宽松 | SPEC 有意用 `dict[str, Any]`，参数校验在各工具层完成 |
 
-### 4.4 产出与预期差距
+### 4.5 实验结论
 
-CodeBuddy 在 Task 1+2 上的实现与主 agent 高度一致（数据模型结构、Config 拆分粒度、Tool Protocol 设计），仅有 `FeedbackCategory` 别名这一个额外产物。这说明 SPEC 在**核心数据模型**层面是足够清晰的。
+CodeBuddy 在 Task 1+2 上的代码产出与主 agent 高度一致——数据结构、配置拆分、Tool Protocol 设计都匹配。这说明 SPEC 在**数据模型层**的质量是合格的。
 
-差距集中在**跨模块接口**：`LLMResponse.tool_calls` 的形状、护栏的精确范围——这些是调试集成时才暴露的，冷启动的 2 个 task 刚好触及不到。如果要在 SPEC 层面就能覆盖，需要增加一个"类型契约"章节，显式定义跨模块的数据格式。
+实验暴露的 3 个缺陷全部集中在同一个模式：**SPEC 给了名字和用途，但没给完整的字段/类型定义**（TurnContext 无字段、LLMResponse.tool_calls 无元素结构、Config 无嵌套拆分）。这是 brainstorming → SPEC 流程中最容易出现的遗漏——因为主 agent 和我在反复讨论中已经对"这些结构长什么样"达成了隐性共识，SPEC 只录入了名称和意图，漏掉了结构细节。
+
+最直接的改进：在 SPEC 自审环节增加一项检查——"每个 §6.1 的核心实体是否都有完整的字段列表？"
 
 ---
 
@@ -171,9 +172,9 @@ CodeBuddy 在 Task 1+2 上的实现与主 agent 高度一致（数据模型结�
 
 ### 如果重做会改变什么
 
-1. **SPEC 增加"跨模块类型契约"章节**：显式定义 LLMResponse.tool_calls、Action.params、Message 等跨模块数据格式。
+1. **SPEC 增加"跨模块类型契约"章节**：显式定义 LLMResponse.tool_calls、Action.params 等跨模块数据格式。
 2. **冷启动验证选择最复杂的 task**（Agent Loop）而非最简单的——集成点的缺陷在数据模型层暴露不了。
-3. **PLAN 的 demo 代码需要与 SPEC 交叉审查**——避免 `FeedbackCategory` 这类笔误。
+3. **SPEC 自审增加字段完整性检查**：每个实体必须有字段列表，不能只有名字。
 
 ---
 
