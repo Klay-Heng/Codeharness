@@ -15,6 +15,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import ClassVar
 
 from codeharness.models import RiskLevel, ToolResult
 
@@ -28,7 +29,7 @@ class RunTestsTool:
         "optional flags (list or space-separated string)."
     )
     risk_level = RiskLevel.LOW
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "path": {

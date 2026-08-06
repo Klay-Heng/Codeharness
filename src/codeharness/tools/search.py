@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 
 from codeharness.models import RiskLevel, ToolResult
 
@@ -28,7 +29,7 @@ class SearchCodeTool:
         "(directory, default cwd), optional glob (filename filter)."
     )
     risk_level = RiskLevel.LOW
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "pattern": {
@@ -147,7 +148,7 @@ class GlobFilesTool:
     name = "glob_files"
     description = "Match file paths by glob pattern, e.g. '**/*.py'."
     risk_level = RiskLevel.LOW
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "pattern": {

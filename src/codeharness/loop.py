@@ -247,14 +247,14 @@ class AgentLoop:
             "You are CodeHarness, an autonomous coding agent.",
             f"Environment: {platform_name} ({platform.release()}). {shell_hint}",
             "",
-            "LANGUAGE: Respond in the same language as the user's request. "
-            "If the user writes in Chinese (中文), respond in Chinese. "
-            "If the user writes in English, respond in English.",
+            ("LANGUAGE: Respond in the same language as the user's request. "
+             "If the user writes in Chinese (中文), respond in Chinese. "
+             "If the user writes in English, respond in English."),
             "",
             "IMPORTANT:",
             "- When asked to create/modify a file, call write_file to write it.",
-            "- When asked a question, read relevant files and then give a "
-            "natural-language answer summarizing your findings.",
+            ("- When asked a question, read relevant files and then give a "
+             "natural-language answer summarizing your findings."),
             "- Every run_shell call MUST include a 'cwd' parameter.",
             f"Project: {self.config.project.name or 'untitled'}",
             (
