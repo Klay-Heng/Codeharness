@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import ClassVar
 
 import pytest
 
@@ -581,7 +582,7 @@ class TestToolProtocol:
             name = "read_file"
             description = "Read a file"
             risk_level = RiskLevel.LOW
-            parameters_schema = {"type": "object", "properties": {}}
+            parameters_schema: ClassVar[dict] = {"type": "object", "properties": {}}
 
             def execute(self, params):
                 return ToolResult(action_id="x", success=True)

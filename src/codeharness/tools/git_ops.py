@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+from typing import ClassVar
 
 from codeharness.models import RiskLevel, ToolResult
 
@@ -25,7 +26,7 @@ class GitOpTool:
     )
     # VARIES per operation (SPEC table); MEDIUM is the protocol-fixed base.
     risk_level = RiskLevel.MEDIUM
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "operation": {

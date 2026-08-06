@@ -8,6 +8,7 @@ dispatch; this tool only executes.
 from __future__ import annotations
 
 import subprocess
+from typing import ClassVar
 
 from codeharness.models import RiskLevel, ToolResult
 
@@ -23,7 +24,7 @@ class RunShellTool:
         "(int, optional) — timeout in seconds (default 60)."
     )
     risk_level = RiskLevel.MEDIUM
-    parameters_schema = {
+    parameters_schema: ClassVar[dict] = {
         "type": "object",
         "properties": {
             "command": {
