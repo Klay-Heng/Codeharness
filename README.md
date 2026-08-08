@@ -68,6 +68,31 @@ cd Codeharness
 pip install -e ".[dev]"
 ```
 
+> **Windows 用户注意事项**：
+>
+> 1. **Python 权限问题**：如果 Python 装在系统目录（`C:\Python314\`），普通用户对 `Scripts` 子目录没有写入权限，pip 无法生成 `codeharness.exe` 入口点。解决方法：
+>    - **方案 A（推荐）**：以管理员身份打开 PowerShell，重新运行 `pip install -e ".[dev]"`
+>    - **方案 B**：使用用户级安装 `pip install -e ".[dev]" --user`，入口点安装到 `%APPDATA%\Python\Python314\Scripts\`
+>    - **方案 C（根本解决）**：重装 Python 时选择 "Install for current user only"，避免所有系统目录权限问题
+>
+> 2. **`codeharness` 命令找不到**：`pip install` 将 `codeharness.exe` 生成在 Python 的 `Scripts` 目录下，该目录必须在系统 PATH 中。如果安装后仍无法识别：
+>    ```powershell
+>    # 检查 Scripts 是否在 PATH 中
+>    python -c "import sys, os; s = os.path.join(sys.prefix, 'Scripts'); print(s in os.environ['PATH'])"
+>    # 检查入口点文件是否存在
+>    python -c "import sys, os; s = os.path.join(sys.prefix, 'Scripts'); [print(f) for f in os.listdir(s) if 'codeharness' in f.lower()]"
+>    ```
+>    - 如果 Scripts 不在 PATH：重启终端，或手动将 `C:\Python314\Scripts` 添加到系统 PATH
+>    - 如果文件不存在：以管理员身份重装或使用 `--user` 安装
+>    - 临时兜底：创建 `C:\Python314\Scripts\codeharness.bat`，内容为 `@echo off` 换行 `python -m codeharness.main %*`
+>
+> 3. **`make` 命令不可用**：Windows 不自带 `make`。直接使用等价命令：
+>    ```powershell
+>    pytest tests/ -v          # 替代 make test
+>    ruff check src/ tests/    # 替代 make lint
+>    pip install -e ".[dev]"   # 替代 make install
+>    ```
+
 ---
 
 ## 快速开始
@@ -75,19 +100,22 @@ pip install -e ".[dev]"
 ### 1. 配置 API Key
 
 ```bash
-codeharness setup
+codeharness setup                    # 配置 API Key
+python -m codeharness.main setup     # 备选方案
 ```
 
 按提示粘贴你的 DeepSeek API Key（输入不可见，不会记录到任何日志或历史中）。
 
 ```bash
-codeharness status    # 查看配置状态（不显示明文 Key）
+codeharness status                   # 查看配置状态（不显示明文 Key）
+python -m codeharness.main status    # 备选方案
 ```
 
 ### 2. 启动 REPL
 
 ```bash
-codeharness
+codeharness                  # 入口点命令（需 pip install 成功生成）
+python -m codeharness.main   # 备选方案，不依赖 PATH，效果完全相同
 ```
 
 ### 3. 给 Agent 一个任务
@@ -145,10 +173,13 @@ codeharness status    # 输出: API key: set
 | `codeharness` | 启动交互式 REPL |
 | `make install` | 可编辑安装 + 开发依赖 |
 | `make test` | 运行全部单元测试 (`pytest tests/ -v`) |
+| `pytest tests/ -v` | 同上（Windows 无 make 时直接用） |
 | `make lint` | 运行 ruff 代码检查 (`ruff check src/ tests/`) |
 | `make clean` | 清理构建产物 |
 | `pytest tests/demo_mechanisms.py -v` | 运行机制演示（Mock LLM，无网络） |
 | `python tests/demo_mechanisms.py` | 同上，以普通脚本运行 |
+
+> **Windows 用户**：PowerShell 中没有 `make` 命令。可以直接用 `pytest tests/ -v`、`ruff check src/ tests/` 等等价命令。安装 Git Bash 后也可使用 `make`。
 
 ---
 
@@ -270,7 +301,8 @@ CI 注入占位环境变量 `DEEPSEEK_API_KEY: sk-mock-for-ci`，绝不接触真
 `MockBackend` 按顺序回放脚本化的 `LLMResponse` 列表，使 Agent Loop、Guard Engine、Feedback Engine 的行为完全确定性、可重复。全部 259 项测试不依赖网络或真实 LLM，可在离线环境运行。
 
 ```bash
-make test    # 259 项测试，约 35 秒
+make test           # 259 项测试，约 35 秒
+pytest tests/ -v    # Windows 无 make 时直接用此命令
 ```
 
 ### 机制演示（SPEC A.6）
