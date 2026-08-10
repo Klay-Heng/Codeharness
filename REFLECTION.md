@@ -1,34 +1,16 @@
 # REFLECTION.md
+Superpowers 工作流为我提供了一个通用的、条理清晰的 AI 辅助开发流程模板，让我在面对从零开始的项目开发时知道如何下手和有规划地开展。本项目的命题——用 Superpowers 去构建另一个 Coding Agent Harness（CodeHarness）——本身就是对这一方法论的一次压力测试。
 
-A framework for structured retrospectives on CodeHarness development.
-Fill this in at the end of each development session (or each task batch)
-to capture what the next session needs to know.  Answer every section
-honestly and concretely — one-line platitudes are worse than nothing.
+其中，我认为 brainstorming 环节尤为重要。AI 关于项目的 11 个逐层递进追问，不仅促进我更全面地理解项目要求，而且让 AI 充分理解我的需求。例如护栏粒度那一问，AI 提出的三级风险 + 会话记忆方案让我意识到自己原本设想的"逐次审批"在实际使用中过度打扰用户——这是 brainstorming 最有价值的时刻：不是 AI 告诉我怎么做，而是帮我发现自己没想清楚的地方。相比之下，TDD 技能则让我感受不深——它完全退隐为 AI 的内部流程，AI 自行写测试、自行修改至通过，我作为使用者只看到测试变绿的结果。
 
-## 1. What went well
+正因为我不具备完全脱离 AI 自己完成本项目的能力，工作流中 AI 规划的 plans 和执行阶段的具体 tasks 让我能知道 AI 在如何推进项目以及每一步在进行什么工作。不过 AI 在代码实现阶段尚有不足：每一个 task 完成后没有停下工作主动汇报和请求审查，倾向于连续执行多个 task，导致我无法在 task 边界有效介入。因此在执行过程中，我向 AI 提出了每次请求指令前解释指令具体目的、task 完成后解释 task 目标和具体完成方式等强制要求，帮助我更好监督和审查 AI 的代码实现过程。这种"每步解释"策略成为我整个项目中最有效的 prompt 手段之一。
 
-- (What worked as planned? Which decisions held up under use?)
+关于 TDD，虽然整体感受不深，但必须承认它的另一面：MockBackend 驱动下 259 项确定性单测覆盖了 Guard Engine 的正则拦截、Feedback Engine 的 9 类失败分类、LoopController 的停止/重试/升级策略——这些机制在移除真实 LLM 后依然可以被独立验证。这是项目 A 那条硬标准——"机制必须是代码，不能是提示词"——的直接证据。然而，整个流程中对 TDD 的作用感受不深的核心原因在于：测试全绿并不等于功能正确。最终完成的项目第一版仍存在很多主要基础功能上的 bug，最典型的是 DeepSeek tool_calls 参数名不匹配导致写文件静默失败。其根因追溯到一个 SPEC 层面的遗漏：LLMResponse.tool_calls 的元素结构（尤其是 id 字段）没有在 SPEC 中精确给出，_decode_tool_calls 丢弃了原始 ID，导致 assistant/tool 消息的 tool_call_id 三者不一致，API 返回 400 错误，修复横跨 parser/backend/loop 四个文件。这个案例让我深刻理解了 SPEC 质量如何直接决定实现质量：一个字段的遗漏，在集成阶段被放大为跨模块的系统性故障。冷启动验证中，CodeBuddy 在 SPEC 模糊处的暂停，集中在"有名字有意图、但没有完整字段定义"的实体上——这印证了 brainstorming 的隐性共识是 SPEC 质量较薄弱的环节。
 
-## 2. What did not go well
+凭据和分发这两条工程要求是另一个让我从"能用"走向"产品"的推动力。API Key 从哪来、存哪里（OS 密钥链，绝不落盘明文）、怎么查看状态（只回显 set/not_set）、怎么更新清除——这套完整的凭据生命周期管理，以及 PyPI 分发中暴露的 Windows 下 make 不可用、pip install 权限等平台差异，在快速原型阶段一定会被忽略，但它们恰恰是"demo"和"真正的软件"的分界线。
 
-- (What broke, slowed us down, or needed rework? Include test failures,
-  lint churn, and spec mismatches.)
+如果重做这个项目，我会改变三件事：一是在 brainstorming 结束后增加一个"类型定义完整性检查"步骤，对 SPEC 中每个命名实体逐一核查字段是否定义齐全；二是在 PLAN 中为每个 task 显式标注跨 task 的接口契约；三是自己更多参与关键模块的手动代码审查，而非仅依赖测试结果。
 
-## 3. Deviations from the plan
+回到 Superpowers 方法论本身。它的核心贡献是守住了一套在 AI 协作中容易松懈的工程纪律——结构化的流程、可追溯的决策、TDD 和 review 的硬约束。但它的两个隐含前提在我的项目中并不完全成立："SPEC 写清楚了实现就不会偏"——冷启动验证证明隐性共识的遗漏是系统性的，不是偶发的疏忽；"TDD 能保证正确性"——当测试和实现由同一个 AI 产出时，两者共享理解偏差，测试丧失了独立验证的能力。本项目最触动我的，是那条"移除 LLM 后还剩什么"的判据所指向的真相：当 LLM 能力越来越强时，一个工程师的真正价值不在于写出更好的提示词，而在于构建不随 LLM 波动而失效的确定性系统。
 
-- (Where did the implementation differ from the plan/SPEC, and why?
-  Note any deliberate deviations that must not be "fixed" later.)
-
-## 4. Design decisions that deserve revisiting
-
-- (Mechanisms with known rough edges: classifier regex coverage, the
-  loop's conversation shape for the real API, empty tool schemas, ...)
-
-## 5. What would we do differently next time
-
-- (Process and architecture lessons, not just code.)
-
-## 6. Open questions / follow-ups
-
-- (Anything deferred: per-tool JSON schemas, provider support beyond
-  DeepSeek, sandboxing for run_shell, LICENSE file before publishing.)
+（本反思报告由学生本人撰写，AI 辅助润色。）
