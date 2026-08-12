@@ -129,27 +129,15 @@ class REPL:
             if not task.strip():
                 continue
             self._last_task = task
-            # If this is a follow-up, wrap the task with an explicit
-            # instruction to use the conversation history.  Placing it
-            # inside the user message (rather than the system prompt)
-            # puts it closest to the model's attention window.
-            if self._messages is not None and len(self._messages) > 2:
-                task = (
-                    "[CONTEXT] This is a follow-up in an ongoing session. "
-                    "The conversation above contains the user's previous "
-                    "requests, your previous actions, and their results. "
-                    "Use that history to understand what the user refers to "
-                    "(e.g. 'that file I just created', 'my naming "
-                    "preference', 'the function from last time'). "
-                    "Do NOT re-scan the project to rediscover what is "
-                    "already clear from the conversation above.\n\n"
-                    + task
-                )
             result = await self.agent_loop.run(task, messages=self._messages)
             self._last_result = result
             # Preserve conversation history for the next turn.
             if result.final_context is not None:
                 self._messages = result.final_context.messages
+            # Persist key facts from this run into the MemoryStore so the
+            # next task's system prompt explicitly includes them.  This is
+            # more reliable than relying on the model to read chat history.
+            self._save_session_context(task, result)
             self._render_run(result)
         self._on_exit()
 
@@ -373,6 +361,51 @@ class REPL:
             except (KeyboardInterrupt, EOFError):
                 pass  # interrupted while asking -> skip saving
         self.console.print("[dim]Goodbye.[/dim]")
+
+    def _save_session_context(self, task: str, result: RunResult) -> None:
+        """Persist a running session-context convention after each task.
+
+        The MemoryStore loads conventions into the system prompt on every
+        run, so facts saved here are explicitly visible to the LLM in the
+        next task — no need to rely on the model reading chat history.
+        """
+        memory = getattr(self.agent_loop, "memory", None)
+        if memory is None:
+            return
+        # Collect files that were created or modified in this run.
+        files_touched: set[str] = set()
+        if result.final_context is not None:
+            for record in result.final_context.correction_history:
+                files_touched |= record.files_touched
+        # Also extract write_file targets from assistant tool calls.
+        if result.final_context is not None:
+            for msg in result.final_context.messages:
+                if msg.role == "assistant" and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        fn = tc.get("function", {})
+                        if fn.get("name") == "write_file":
+                            try:
+                                import json
+                                args = json.loads(fn.get("arguments", "{}"))
+                                if "path" in args:
+                                    files_touched.add(args["path"])
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+        parts = [f"## Task: {task.strip()[:200]}"]
+        if files_touched:
+            parts.append(f"Files: {', '.join(sorted(files_touched))}")
+        parts.append(f"Status: {result.status} ({result.rounds} round(s))")
+
+        # Extract the agent's final text response (the "answer").
+        if result.final_context is not None:
+            for msg in reversed(result.final_context.messages):
+                if msg.role == "assistant" and msg.content.strip():
+                    final_answer = msg.content.strip()[:500]
+                    parts.append(f"Outcome: {final_answer}")
+                    break
+
+        memory.save_convention("session-context", "\n".join(parts))
 
     def _save_decisions(self) -> None:
         """Persist the last run's outcome as a memory decision (SPEC 3.6)."""
