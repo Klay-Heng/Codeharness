@@ -129,6 +129,22 @@ class REPL:
             if not task.strip():
                 continue
             self._last_task = task
+            # If this is a follow-up, wrap the task with an explicit
+            # instruction to use the conversation history.  Placing it
+            # inside the user message (rather than the system prompt)
+            # puts it closest to the model's attention window.
+            if self._messages is not None and len(self._messages) > 2:
+                task = (
+                    "[CONTEXT] This is a follow-up in an ongoing session. "
+                    "The conversation above contains the user's previous "
+                    "requests, your previous actions, and their results. "
+                    "Use that history to understand what the user refers to "
+                    "(e.g. 'that file I just created', 'my naming "
+                    "preference', 'the function from last time'). "
+                    "Do NOT re-scan the project to rediscover what is "
+                    "already clear from the conversation above.\n\n"
+                    + task
+                )
             result = await self.agent_loop.run(task, messages=self._messages)
             self._last_result = result
             # Preserve conversation history for the next turn.
