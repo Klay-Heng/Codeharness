@@ -28,7 +28,7 @@ max_tokens = 8192
 temperature = 0.0
 
 [feedback]
-max_correction_rounds = 5      # hard stop after this many correction rounds
+max_correction_rounds = 10     # hard stop after this many correction rounds
 max_same_error = 3             # escalate to a human after N same-category errors
 timeout_ms = 60000             # tool executions longer than this classify as TIMEOUT
 signal_sources = ["pytest", "ruff", "mypy"]

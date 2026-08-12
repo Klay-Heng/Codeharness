@@ -269,11 +269,22 @@ class AgentLoop:
              "If the user writes in Chinese (中文), respond in Chinese. "
              "If the user writes in English, respond in English."),
             "",
+            "CONVERSATION HISTORY:",
+            "- The conversation above contains your previous tasks, tool "
+            "results, and decisions in this session.",
+            "- When the user refers to previous work (e.g. 'change the "
+            "return value', 'rename that function'), check the conversation "
+            "history FIRST to identify which file(s) they mean.",
+            "- Do NOT scan the entire project if the context is already clear "
+            "from prior conversation.  Trust your memory.",
+            "",
             "IMPORTANT:",
             "- When asked to create/modify a file, call write_file to write it.",
             ("- When asked a question, read relevant files and then give a "
              "natural-language answer summarizing your findings."),
             "- Every run_shell call MUST include a 'cwd' parameter.",
+            "- When running tests after a small change, specify a path "
+            "(e.g. 'tests/test_hello.py') instead of running all tests.",
             f"Project: {self.config.project.name or 'untitled'}",
             (
                 "Language: "

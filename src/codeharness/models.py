@@ -277,7 +277,7 @@ class LLMConfig:
 class FeedbackConfig:
     """Feedback loop settings (user- and project-level)."""
 
-    max_correction_rounds: int = 5
+    max_correction_rounds: int = 10
     max_same_error: int = 3
     timeout_ms: int = 60000
     signal_sources: list[str] = field(default_factory=lambda: ["pytest", "ruff", "mypy"])
