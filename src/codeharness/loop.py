@@ -83,26 +83,44 @@ class AgentLoop:
     # Main entry point
     # ------------------------------------------------------------------
 
-    async def run(self, task: str) -> RunResult:
+    async def run(
+        self, task: str, messages: list[Message] | None = None
+    ) -> RunResult:
         """Execute ``task`` to completion.
 
-        The loop follows a simple protocol:
-
-        1. Call the LLM with the current conversation and tool list.
-        2. If the LLM returns no tool calls, it is signalling completion
-           — return success (or push back once if the response is empty).
-        3. Otherwise execute every tool call, feed results back into the
-           conversation, and evaluate through the feedback engine.
-        4. If the feedback engine escalates (repeated errors / regression),
-           stop.  Otherwise **always give the LLM another turn** so it can
-           read → think → write → test across multiple rounds.
-        5. ``max_correction_rounds`` is a hard safety limit.
+        Args:
+            task: The user's task description.
+            messages: Optional existing conversation to continue.  When
+                provided the system prompt is refreshed and the task is
+                appended as a new user message.  This enables multi-turn
+                REPL sessions where the agent remembers previous tasks,
+                tool results, and responses.
         """
         start = time.perf_counter()
-        messages: list[Message] = [
-            Message(role="system", content=self._system_prompt()),
-            Message(role="user", content=task),
-        ]
+        if messages is None:
+            messages = [
+                Message(role="system", content=self._system_prompt()),
+            ]
+        else:
+            # Refresh system prompt (memory may have changed) and keep
+            # all prior conversation history.
+            if messages and messages[0].role == "system":
+                messages[0].content = self._system_prompt()
+            else:
+                messages.insert(0, Message(
+                    role="system", content=self._system_prompt(),
+                ))
+        messages.append(Message(role="user", content=task))
+
+        # Truncate long conversations to stay inside the model's context
+        # window (DeepSeek: 64K tokens).  Always keep the system prompt
+        # plus a sliding window of the most recent turns.
+        _MAX_MESSAGES = 40
+        if len(messages) > _MAX_MESSAGES:
+            system = messages[:1]  # system prompt
+            tail = messages[-(_MAX_MESSAGES - 1):]
+            messages = system + tail
+
         history: list[CorrectionRecord] = []
         last_results: list[ToolResult] = []
         max_rounds = self.config.feedback.max_correction_rounds

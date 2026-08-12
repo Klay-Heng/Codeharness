@@ -35,6 +35,7 @@ from codeharness.models import (
     Config,
     CorrectionRecord,
     FailureCategory,
+    Message,
     RunResult,
     TurnContext,
 )
@@ -97,6 +98,11 @@ class REPL:
         self.console = console if console is not None else Console()
         self._last_task: str | None = None
         self._last_result: RunResult | None = None
+        # Shared conversation history for multi-turn support.  Starts
+        # empty — the first run will build the initial messages (system
+        # prompt + task).  Subsequent runs append to this list so the
+        # agent remembers the full REPL session.
+        self._messages: list[Message] | None = None
         # Wire the approval callback so the REPL prompts on guard blocks.
         agent_loop.approval_callback = self._approval_callback
 
@@ -123,8 +129,11 @@ class REPL:
             if not task.strip():
                 continue
             self._last_task = task
-            result = await self.agent_loop.run(task)
+            result = await self.agent_loop.run(task, messages=self._messages)
             self._last_result = result
+            # Preserve conversation history for the next turn.
+            if result.final_context is not None:
+                self._messages = result.final_context.messages
             self._render_run(result)
         self._on_exit()
 
